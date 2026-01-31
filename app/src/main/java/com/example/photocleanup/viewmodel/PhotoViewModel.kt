@@ -1,0 +1,233 @@
+package com.example.photocleanup.viewmodel
+
+import android.app.Application
+import android.content.ContentResolver
+import android.content.Context
+import android.content.IntentSender
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.photocleanup.PhotoCleanupApp
+import com.example.photocleanup.data.DateRangeFilter
+import com.example.photocleanup.data.FolderInfo
+import com.example.photocleanup.data.PhotoFilter
+import com.example.photocleanup.data.PhotoRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+data class UndoableAction(
+    val photo: Uri,
+    val action: String,
+    val previousIndex: Int
+)
+
+data class PhotoUiState(
+    val photos: List<Uri> = emptyList(),
+    val currentIndex: Int = 0,
+    val isLoading: Boolean = true,
+    val totalPhotosCount: Int = 0,
+    val reviewedCount: Int = 0,
+    val pendingDeleteUri: Uri? = null,
+    val deleteIntentSender: IntentSender? = null,
+    val lastAction: UndoableAction? = null,
+    val toDeleteCount: Int = 0,
+    val filter: PhotoFilter = PhotoFilter(),
+    val availableFolders: List<FolderInfo> = emptyList(),
+    val isLoadingFolders: Boolean = false
+) {
+    val currentPhoto: Uri? get() = photos.getOrNull(currentIndex)
+    val hasPhotos: Boolean get() = photos.isNotEmpty()
+    val isAllDone: Boolean get() = !isLoading && photos.isEmpty()
+    val hasActiveFilters: Boolean get() = filter.selectedFolders.isNotEmpty() || filter.dateRange != DateRangeFilter.ALL
+}
+
+class PhotoViewModel(application: Application) : AndroidViewModel(application) {
+    private val database = (application as PhotoCleanupApp).database
+    private val repository = PhotoRepository(application, database.reviewedPhotoDao())
+
+    private val _uiState = MutableStateFlow(PhotoUiState())
+    val uiState: StateFlow<PhotoUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            repository.getToDeleteCount().collect { count ->
+                _uiState.value = _uiState.value.copy(toDeleteCount = count)
+            }
+        }
+    }
+
+    fun loadPhotos() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            val filter = _uiState.value.filter
+            val filteredPhotos = repository.loadFilteredPhotos(filter)
+            val reviewedUris = repository.getReviewedUris()
+            val unreviewedPhotos = filteredPhotos.filter { it.toString() !in reviewedUris }
+            _uiState.value = _uiState.value.copy(
+                photos = unreviewedPhotos,
+                currentIndex = 0,
+                isLoading = false,
+                totalPhotosCount = filteredPhotos.size,
+                reviewedCount = filteredPhotos.size - unreviewedPhotos.size
+            )
+        }
+    }
+
+    fun loadAvailableFolders() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingFolders = true)
+            val folders = repository.getAvailableFolders()
+            _uiState.value = _uiState.value.copy(
+                availableFolders = folders,
+                isLoadingFolders = false
+            )
+        }
+    }
+
+    fun updateFilter(filter: PhotoFilter) {
+        _uiState.value = _uiState.value.copy(filter = filter)
+        loadPhotos()
+    }
+
+    fun toggleFolderSelection(folderName: String) {
+        val currentFilter = _uiState.value.filter
+        val newSelectedFolders = if (folderName in currentFilter.selectedFolders) {
+            currentFilter.selectedFolders - folderName
+        } else {
+            currentFilter.selectedFolders + folderName
+        }
+        updateFilter(currentFilter.copy(selectedFolders = newSelectedFolders))
+    }
+
+    fun setDateRange(dateRange: DateRangeFilter) {
+        val currentFilter = _uiState.value.filter
+        updateFilter(currentFilter.copy(dateRange = dateRange))
+    }
+
+    fun clearFilters() {
+        updateFilter(PhotoFilter())
+    }
+
+    fun keepCurrentPhoto() {
+        val currentPhoto = _uiState.value.currentPhoto ?: return
+        val currentIndex = _uiState.value.currentIndex
+        viewModelScope.launch {
+            repository.markAsReviewed(currentPhoto, "keep")
+            _uiState.value = _uiState.value.copy(
+                lastAction = UndoableAction(currentPhoto, "keep", currentIndex)
+            )
+            moveToNextPhoto()
+        }
+    }
+
+    fun markCurrentPhotoForDeletion() {
+        val currentPhoto = _uiState.value.currentPhoto ?: return
+        val currentIndex = _uiState.value.currentIndex
+        viewModelScope.launch {
+            repository.markAsReviewed(currentPhoto, "to_delete")
+            _uiState.value = _uiState.value.copy(
+                lastAction = UndoableAction(currentPhoto, "to_delete", currentIndex)
+            )
+            moveToNextPhoto()
+        }
+    }
+
+    fun undoLastAction() {
+        val lastAction = _uiState.value.lastAction ?: return
+        viewModelScope.launch {
+            repository.removeReview(lastAction.photo)
+            val currentPhotos = _uiState.value.photos.toMutableList()
+            currentPhotos.add(lastAction.previousIndex, lastAction.photo)
+            _uiState.value = _uiState.value.copy(
+                photos = currentPhotos,
+                currentIndex = lastAction.previousIndex,
+                reviewedCount = _uiState.value.reviewedCount - 1,
+                lastAction = null
+            )
+        }
+    }
+
+    fun requestDeleteCurrentPhoto(): IntentSender? {
+        val currentPhoto = _uiState.value.currentPhoto ?: return null
+        val context = getApplication<PhotoCleanupApp>()
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val deleteRequest = MediaStore.createDeleteRequest(
+                context.contentResolver,
+                listOf(currentPhoto)
+            )
+            _uiState.value = _uiState.value.copy(
+                pendingDeleteUri = currentPhoto,
+                deleteIntentSender = deleteRequest.intentSender
+            )
+            deleteRequest.intentSender
+        } else {
+            // For Android 10 and below, delete directly
+            deletePhotoDirectly(context.contentResolver, currentPhoto)
+            null
+        }
+    }
+
+    fun onDeleteConfirmed(success: Boolean) {
+        val pendingUri = _uiState.value.pendingDeleteUri
+        if (pendingUri != null && success) {
+            viewModelScope.launch {
+                repository.markAsReviewed(pendingUri, "deleted")
+                _uiState.value = _uiState.value.copy(
+                    pendingDeleteUri = null,
+                    deleteIntentSender = null
+                )
+                moveToNextPhoto()
+            }
+        } else {
+            _uiState.value = _uiState.value.copy(
+                pendingDeleteUri = null,
+                deleteIntentSender = null
+            )
+        }
+    }
+
+    private fun deletePhotoDirectly(contentResolver: ContentResolver, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                contentResolver.delete(uri, null, null)
+                repository.markAsReviewed(uri, "deleted")
+                moveToNextPhoto()
+            } catch (e: Exception) {
+                // Handle error - photo might be protected
+            }
+        }
+    }
+
+    private fun moveToNextPhoto() {
+        val currentState = _uiState.value
+        val newPhotos = currentState.photos.toMutableList()
+
+        if (currentState.currentIndex < newPhotos.size) {
+            newPhotos.removeAt(currentState.currentIndex)
+        }
+
+        val newIndex = if (currentState.currentIndex >= newPhotos.size) {
+            maxOf(0, newPhotos.size - 1)
+        } else {
+            currentState.currentIndex
+        }
+
+        _uiState.value = currentState.copy(
+            photos = newPhotos,
+            currentIndex = newIndex,
+            reviewedCount = currentState.reviewedCount + 1
+        )
+    }
+
+    fun resetAllReviews() {
+        viewModelScope.launch {
+            repository.resetAllReviews()
+            loadPhotos()
+        }
+    }
+}
