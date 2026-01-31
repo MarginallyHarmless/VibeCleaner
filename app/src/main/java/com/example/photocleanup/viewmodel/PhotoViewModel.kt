@@ -2,10 +2,12 @@ package com.example.photocleanup.viewmodel
 
 import android.app.Application
 import android.content.ContentResolver
-import android.content.Context
 import android.content.IntentSender
+import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -37,7 +39,8 @@ data class PhotoUiState(
     val toDeleteCount: Int = 0,
     val filter: PhotoFilter = PhotoFilter(),
     val availableFolders: List<FolderInfo> = emptyList(),
-    val isLoadingFolders: Boolean = false
+    val isLoadingFolders: Boolean = false,
+    val showCelebration: Boolean = true
 ) {
     val currentPhoto: Uri? get() = photos.getOrNull(currentIndex)
     val hasPhotos: Boolean get() = photos.isNotEmpty()
@@ -52,12 +55,30 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(PhotoUiState())
     val uiState: StateFlow<PhotoUiState> = _uiState.asStateFlow()
 
+    private val contentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            loadPhotos()
+        }
+    }
+
     init {
         viewModelScope.launch {
             repository.getToDeleteCount().collect { count ->
                 _uiState.value = _uiState.value.copy(toDeleteCount = count)
             }
         }
+
+        // Register content observer to detect new photos
+        getApplication<PhotoCleanupApp>().contentResolver.registerContentObserver(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            true,
+            contentObserver
+        )
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        getApplication<PhotoCleanupApp>().contentResolver.unregisterContentObserver(contentObserver)
     }
 
     fun loadPhotos() {
@@ -72,7 +93,8 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
                 currentIndex = 0,
                 isLoading = false,
                 totalPhotosCount = filteredPhotos.size,
-                reviewedCount = filteredPhotos.size - unreviewedPhotos.size
+                reviewedCount = filteredPhotos.size - unreviewedPhotos.size,
+                showCelebration = true
             )
         }
     }
@@ -229,5 +251,9 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
             repository.resetAllReviews()
             loadPhotos()
         }
+    }
+
+    fun dismissCelebration() {
+        _uiState.value = _uiState.value.copy(showCelebration = false)
     }
 }

@@ -22,13 +22,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,10 +47,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.photocleanup.ui.components.ProgressIndicator
 import com.example.photocleanup.ui.components.SwipeablePhotoCard
-import com.example.photocleanup.ui.theme.VibeCoral
-import com.example.photocleanup.ui.theme.VibeCoralLight
-import com.example.photocleanup.ui.theme.VibeDelete
-import com.example.photocleanup.ui.theme.VibeKeep
+import com.example.photocleanup.ui.theme.AccentPrimary
+import com.example.photocleanup.ui.theme.AccentPrimaryDim
+import com.example.photocleanup.ui.theme.ActionDelete
+import com.example.photocleanup.ui.theme.ActionKeep
 import com.example.photocleanup.viewmodel.PhotoViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -98,22 +99,13 @@ fun MainScreen(
                 uiState.isLoading -> {
                     CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.Center),
-                        color = VibeCoral
+                        color = AccentPrimary
                     )
                 }
 
-                uiState.isAllDone -> {
-                    AllDoneScreen(
-                        totalReviewed = uiState.reviewedCount,
-                        onReviewAgain = {
-                            viewModel.resetAllReviews()
-                        }
-                    )
-                }
-
-                uiState.hasPhotos -> {
+                else -> {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Top bar with ToDelete badge and Filters icon
+                        // Top bar - ALWAYS shown when not loading
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -131,36 +123,54 @@ fun MainScreen(
                                 Spacer(modifier = Modifier.width(48.dp))
                             }
 
-                            // Right: Filters icon (was Settings)
+                            // Right: Settings icon
                             IconButton(onClick = onNavigateToSettings) {
                                 Icon(
-                                    imageVector = Icons.Default.Tune,
-                                    contentDescription = "Filters"
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings"
                                 )
                             }
                         }
 
-                        ProgressIndicator(
-                            currentIndex = uiState.currentIndex,
-                            totalCount = uiState.totalPhotosCount,
-                            reviewedCount = uiState.reviewedCount
-                        )
+                        // Content area
+                        when {
+                            uiState.isAllDone -> {
+                                if (uiState.showCelebration) {
+                                    AllDoneContent(
+                                        totalReviewed = uiState.reviewedCount,
+                                        onReviewAgain = { viewModel.resetAllReviews() },
+                                        onBack = { viewModel.dismissCelebration() },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                } else {
+                                    EmptyStateContent(modifier = Modifier.weight(1f))
+                                }
+                            }
 
-                        uiState.currentPhoto?.let { photo ->
-                            SwipeablePhotoCard(
-                                photo = photo,
-                                onSwipeLeft = { viewModel.keepCurrentPhoto() },
-                                onSwipeRight = { viewModel.markCurrentPhotoForDeletion() },
-                                modifier = Modifier.weight(1f)
-                            )
+                            uiState.hasPhotos -> {
+                                ProgressIndicator(
+                                    currentIndex = uiState.currentIndex,
+                                    totalCount = uiState.totalPhotosCount,
+                                    reviewedCount = uiState.reviewedCount
+                                )
+
+                                uiState.currentPhoto?.let { photo ->
+                                    SwipeablePhotoCard(
+                                        photo = photo,
+                                        onSwipeLeft = { viewModel.keepCurrentPhoto() },
+                                        onSwipeRight = { viewModel.markCurrentPhotoForDeletion() },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+
+                                // Swipe hints row with undo button in center
+                                SwipeHintsWithUndo(
+                                    showUndo = uiState.lastAction != null,
+                                    onUndo = { viewModel.undoLastAction() },
+                                    modifier = Modifier.padding(bottom = 16.dp)
+                                )
+                            }
                         }
-
-                        // Swipe hints row with undo button in center
-                        SwipeHintsWithUndo(
-                            showUndo = uiState.lastAction != null,
-                            onUndo = { viewModel.undoLastAction() },
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
                     }
                 }
             }
@@ -185,7 +195,7 @@ private fun SwipeHintsWithUndo(
         Text(
             text = "\u2190 Keep",
             style = MaterialTheme.typography.bodyLarge,
-            color = VibeKeep,
+            color = ActionKeep,
             fontWeight = FontWeight.Medium
         )
 
@@ -194,7 +204,7 @@ private fun SwipeHintsWithUndo(
             OutlinedButton(
                 onClick = onUndo,
                 colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = VibeCoral
+                    contentColor = AccentPrimary
                 )
             ) {
                 Icon(
@@ -214,7 +224,7 @@ private fun SwipeHintsWithUndo(
         Text(
             text = "Delete \u2192",
             style = MaterialTheme.typography.bodyLarge,
-            color = VibeDelete,
+            color = ActionDelete,
             fontWeight = FontWeight.Medium
         )
     }
@@ -230,7 +240,7 @@ private fun ToDeleteBadge(
         onClick = onClick,
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
-        color = VibeDelete.copy(alpha = 0.15f)
+        color = ActionDelete.copy(alpha = 0.15f)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -241,12 +251,12 @@ private fun ToDeleteBadge(
                 imageVector = Icons.Default.Delete,
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
-                tint = VibeDelete
+                tint = ActionDelete
             )
             Text(
                 text = count.toString(),
                 style = MaterialTheme.typography.labelLarge,
-                color = VibeDelete,
+                color = ActionDelete,
                 fontWeight = FontWeight.SemiBold
             )
         }
@@ -255,18 +265,19 @@ private fun ToDeleteBadge(
 
 
 @Composable
-private fun AllDoneScreen(
+private fun AllDoneContent(
     totalReviewed: Int,
     onReviewAgain: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .background(
                 Brush.radialGradient(
                     colors = listOf(
-                        VibeCoralLight.copy(alpha = 0.3f),
+                        AccentPrimaryDim.copy(alpha = 0.3f),
                         Color.Transparent
                     )
                 )
@@ -289,7 +300,7 @@ private fun AllDoneScreen(
             Text(
                 text = "All Done!",
                 style = MaterialTheme.typography.displaySmall,
-                color = VibeCoral,
+                color = AccentPrimary,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
@@ -306,16 +317,58 @@ private fun AllDoneScreen(
             Spacer(modifier = Modifier.height(48.dp))
 
             OutlinedButton(
-                onClick = onReviewAgain,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(24.dp))
+                onClick = onBack,
+                modifier = Modifier.clip(RoundedCornerShape(24.dp))
             ) {
                 Text(
-                    text = "Review Again",
+                    text = "Back",
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            TextButton(onClick = onReviewAgain) {
+                Text(
+                    text = "Review Again",
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun EmptyStateContent(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "\uD83D\uDCF7",
+            fontSize = 64.sp
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "No photos to review",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "New photos will appear here when you add them to your gallery.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
