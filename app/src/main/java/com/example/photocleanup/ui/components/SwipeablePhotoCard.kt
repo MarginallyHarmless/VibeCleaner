@@ -1,9 +1,8 @@
 package com.example.photocleanup.ui.components
 
 import android.net.Uri
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -45,8 +44,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.photocleanup.ui.theme.VibeDelete
-import com.example.photocleanup.ui.theme.VibeKeep
+import com.example.photocleanup.ui.theme.ActionDelete
+import com.example.photocleanup.ui.theme.ActionKeep
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
@@ -59,7 +58,7 @@ fun SwipeablePhotoCard(
 ) {
     val density = LocalDensity.current
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val dismissThreshold = with(density) { 150.dp.toPx() }
+    val dismissThreshold = with(density) { 80.dp.toPx() }
 
     var offsetX by remember { mutableFloatStateOf(0f) }
     var isDismissed by remember { mutableStateOf(false) }
@@ -72,12 +71,9 @@ fun SwipeablePhotoCard(
             offsetX
         },
         animationSpec = if (isDismissed) {
-            tween(durationMillis = 300)
+            tween(durationMillis = 150)
         } else {
-            spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessMedium
-            )
+            snap()
         },
         finishedListener = {
             if (isDismissed) {
@@ -91,7 +87,7 @@ fun SwipeablePhotoCard(
 
     val alpha by animateFloatAsState(
         targetValue = if (isDismissed) 0f else 1f,
-        animationSpec = tween(durationMillis = 300),
+        animationSpec = tween(durationMillis = 150),
         label = "alphaAnimation"
     )
 
@@ -142,8 +138,9 @@ fun SwipeablePhotoCard(
                     contentDescription = "Photo to review",
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(24.dp)),
-                    contentScale = ContentScale.Crop
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color.Black),
+                    contentScale = ContentScale.Fit
                 )
 
                 // Keep overlay (swipe left) - gradient from left
@@ -154,7 +151,7 @@ fun SwipeablePhotoCard(
                             .background(
                                 Brush.horizontalGradient(
                                     colors = listOf(
-                                        VibeKeep.copy(alpha = swipeProgress.absoluteValue * 0.7f),
+                                        ActionKeep.copy(alpha = swipeProgress.absoluteValue * 0.7f),
                                         Color.Transparent
                                     ),
                                     startX = 0f,
@@ -195,7 +192,7 @@ fun SwipeablePhotoCard(
                                 Brush.horizontalGradient(
                                     colors = listOf(
                                         Color.Transparent,
-                                        VibeDelete.copy(alpha = swipeProgress.absoluteValue * 0.7f)
+                                        ActionDelete.copy(alpha = swipeProgress.absoluteValue * 0.7f)
                                     ),
                                     startX = 0f,
                                     endX = Float.POSITIVE_INFINITY
