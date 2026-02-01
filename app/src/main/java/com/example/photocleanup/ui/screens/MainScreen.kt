@@ -32,10 +32,18 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.example.photocleanup.ui.components.ProgressIndicator
 import com.example.photocleanup.ui.components.SwipeablePhotoCard
 import com.example.photocleanup.ui.theme.AccentPrimary
@@ -154,13 +163,34 @@ fun MainScreen(
                                     reviewedCount = uiState.reviewedCount
                                 )
 
-                                uiState.currentPhoto?.let { photo ->
-                                    SwipeablePhotoCard(
-                                        photo = photo,
-                                        onSwipeLeft = { viewModel.keepCurrentPhoto() },
-                                        onSwipeRight = { viewModel.markCurrentPhotoForDeletion() },
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                Box(modifier = Modifier.weight(1f)) {
+                                    // Next photo underneath (zIndex = 0)
+                                    uiState.nextPhoto?.let { nextPhoto ->
+                                        key(nextPhoto) {
+                                            SwipeablePhotoCard(
+                                                photo = nextPhoto,
+                                                onSwipeLeft = { },
+                                                onSwipeRight = { },
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .zIndex(0f)
+                                            )
+                                        }
+                                    }
+
+                                    // Current photo on top (zIndex = 1)
+                                    uiState.currentPhoto?.let { photo ->
+                                        key(photo) {
+                                            SwipeablePhotoCard(
+                                                photo = photo,
+                                                onSwipeLeft = { viewModel.keepCurrentPhoto() },
+                                                onSwipeRight = { viewModel.markCurrentPhotoForDeletion() },
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .zIndex(1f)
+                                            )
+                                        }
+                                    }
                                 }
 
                                 // Swipe hints row with undo button in center
@@ -236,11 +266,32 @@ private fun ToDeleteBadge(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Track previous count to detect increments
+    var lastCount by remember { mutableIntStateOf(count) }
+    var isFlashing by remember { mutableStateOf(false) }
+
+    // Detect when count increases (photo added to delete list)
+    LaunchedEffect(count) {
+        if (count > lastCount) {
+            isFlashing = true
+            delay(300)
+            isFlashing = false
+        }
+        lastCount = count
+    }
+
+    // Animate background alpha
+    val backgroundAlpha by animateFloatAsState(
+        targetValue = if (isFlashing) 0.4f else 0.15f,
+        animationSpec = tween(durationMillis = 150),
+        label = "flashAnimation"
+    )
+
     Surface(
         onClick = onClick,
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
-        color = ActionDelete.copy(alpha = 0.15f)
+        color = ActionDelete.copy(alpha = backgroundAlpha)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
