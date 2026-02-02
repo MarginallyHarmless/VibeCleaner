@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.photocleanup.PhotoCleanupApp
 import com.example.photocleanup.data.DateRangeFilter
 import com.example.photocleanup.data.FolderInfo
+import com.example.photocleanup.data.MoveResult
 import com.example.photocleanup.data.PhotoFilter
 import com.example.photocleanup.data.PhotoRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,9 +41,17 @@ data class PhotoUiState(
     val filter: PhotoFilter = PhotoFilter(),
     val availableFolders: List<FolderInfo> = emptyList(),
     val isLoadingFolders: Boolean = false,
-    val showCelebration: Boolean = true
+    val showCelebration: Boolean = true,
+    // Album selector state
+    val currentPhotoAlbum: FolderInfo? = null,
+    val isMovingPhoto: Boolean = false,
+    val moveIntentSender: IntentSender? = null,
+    val pendingMoveAlbum: String? = null,
+    val pendingMoveSourceAlbumId: Long? = null,
+    val moveError: String? = null
 ) {
     val currentPhoto: Uri? get() = photos.getOrNull(currentIndex)
+    val nextPhoto: Uri? get() = photos.getOrNull(currentIndex + 1)
     val hasPhotos: Boolean get() = photos.isNotEmpty()
     val isAllDone: Boolean get() = !isLoading && photos.isEmpty()
     val hasActiveFilters: Boolean get() = filter.selectedFolders.isNotEmpty() || filter.dateRange != DateRangeFilter.ALL
@@ -255,5 +264,115 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissCelebration() {
         _uiState.value = _uiState.value.copy(showCelebration = false)
+    }
+
+    fun loadCurrentPhotoAlbum() {
+        val currentPhoto = _uiState.value.currentPhoto ?: return
+        viewModelScope.launch {
+            val albumInfo = repository.getPhotoAlbumInfo(currentPhoto)
+            _uiState.value = _uiState.value.copy(currentPhotoAlbum = albumInfo)
+        }
+    }
+
+    fun movePhotoToAlbum(albumName: String) {
+        val currentPhoto = _uiState.value.currentPhoto ?: return
+        val sourceAlbumId = _uiState.value.currentPhotoAlbum?.bucketId
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isMovingPhoto = true, moveError = null)
+            when (val result = repository.movePhotoToAlbum(currentPhoto, albumName)) {
+                is MoveResult.Success -> {
+                    // Update the current photo's album info
+                    val newAlbumInfo = repository.getPhotoAlbumInfo(result.newUri)
+                    _uiState.value = _uiState.value.copy(
+                        isMovingPhoto = false,
+                        currentPhotoAlbum = newAlbumInfo
+                    )
+                    // Update folder counts locally (no reload, no reordering)
+                    updateFolderCountsAfterMove(sourceAlbumId, albumName)
+                }
+                is MoveResult.RequiresPermission -> {
+                    _uiState.value = _uiState.value.copy(
+                        isMovingPhoto = false,
+                        moveIntentSender = result.intentSender,
+                        pendingMoveAlbum = result.targetAlbum,
+                        pendingMoveSourceAlbumId = sourceAlbumId
+                    )
+                }
+                is MoveResult.Error -> {
+                    _uiState.value = _uiState.value.copy(
+                        isMovingPhoto = false,
+                        moveError = result.message
+                    )
+                }
+                is MoveResult.AlreadyInAlbum -> {
+                    _uiState.value = _uiState.value.copy(
+                        isMovingPhoto = false,
+                        moveError = "Already in this album"
+                    )
+                }
+            }
+        }
+    }
+
+    fun onMovePermissionResult(granted: Boolean) {
+        val currentPhoto = _uiState.value.currentPhoto
+        val targetAlbum = _uiState.value.pendingMoveAlbum
+        val sourceAlbumId = _uiState.value.pendingMoveSourceAlbumId
+
+        if (granted && currentPhoto != null && targetAlbum != null) {
+            viewModelScope.launch {
+                _uiState.value = _uiState.value.copy(
+                    isMovingPhoto = true,
+                    moveIntentSender = null,
+                    pendingMoveAlbum = null,
+                    pendingMoveSourceAlbumId = null
+                )
+                when (val result = repository.completeMoveAfterPermission(currentPhoto, targetAlbum)) {
+                    is MoveResult.Success -> {
+                        val newAlbumInfo = repository.getPhotoAlbumInfo(result.newUri)
+                        _uiState.value = _uiState.value.copy(
+                            isMovingPhoto = false,
+                            currentPhotoAlbum = newAlbumInfo
+                        )
+                        // Update folder counts locally (no reload, no reordering)
+                        updateFolderCountsAfterMove(sourceAlbumId, targetAlbum)
+                    }
+                    is MoveResult.Error -> {
+                        _uiState.value = _uiState.value.copy(
+                            isMovingPhoto = false,
+                            moveError = result.message
+                        )
+                    }
+                    else -> {
+                        _uiState.value = _uiState.value.copy(isMovingPhoto = false)
+                    }
+                }
+            }
+        } else {
+            _uiState.value = _uiState.value.copy(
+                moveIntentSender = null,
+                pendingMoveAlbum = null,
+                pendingMoveSourceAlbumId = null
+            )
+        }
+    }
+
+    fun clearMoveError() {
+        _uiState.value = _uiState.value.copy(moveError = null)
+    }
+
+    /**
+     * Update folder counts locally after moving a photo.
+     * This avoids reloading and re-sorting the folder list.
+     */
+    private fun updateFolderCountsAfterMove(sourceAlbumId: Long?, targetAlbumName: String) {
+        val updatedFolders = _uiState.value.availableFolders.map { folder ->
+            when {
+                folder.bucketId == sourceAlbumId -> folder.copy(photoCount = folder.photoCount - 1)
+                folder.displayName == targetAlbumName -> folder.copy(photoCount = folder.photoCount + 1)
+                else -> folder
+            }
+        }
+        _uiState.value = _uiState.value.copy(availableFolders = updatedFolders)
     }
 }

@@ -2,6 +2,7 @@ package com.example.photocleanup.ui.screens
 
 import android.Manifest
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,13 +18,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,6 +43,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
@@ -49,17 +51,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.example.photocleanup.ui.components.AlbumSelector
 import com.example.photocleanup.ui.components.ProgressIndicator
 import com.example.photocleanup.ui.components.SwipeablePhotoCard
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.AccentPrimaryDim
 import com.example.photocleanup.ui.theme.ActionDelete
-import com.example.photocleanup.ui.theme.ActionKeep
 import com.example.photocleanup.viewmodel.PhotoViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -74,6 +77,7 @@ fun MainScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
 
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_IMAGES
@@ -88,9 +92,38 @@ fun MainScreen(
         viewModel.onDeleteConfirmed(result.resultCode == android.app.Activity.RESULT_OK)
     }
 
+    // Launcher for move permission (Android 11+)
+    val moveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        viewModel.onMovePermissionResult(result.resultCode == android.app.Activity.RESULT_OK)
+    }
+
     LaunchedEffect(uiState.deleteIntentSender) {
         uiState.deleteIntentSender?.let { intentSender ->
             deleteLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+        }
+    }
+
+    // Handle move permission request
+    LaunchedEffect(uiState.moveIntentSender) {
+        uiState.moveIntentSender?.let { intentSender ->
+            moveLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+        }
+    }
+
+    // Show move error as toast
+    LaunchedEffect(uiState.moveError) {
+        uiState.moveError?.let { error ->
+            Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+            viewModel.clearMoveError()
+        }
+    }
+
+    // Load current photo album when photo changes
+    LaunchedEffect(uiState.currentPhoto) {
+        if (uiState.currentPhoto != null) {
+            viewModel.loadCurrentPhotoAlbum()
         }
     }
 
@@ -101,7 +134,11 @@ fun MainScreen(
     } else {
         LaunchedEffect(Unit) {
             viewModel.loadPhotos()
+            viewModel.loadAvailableFolders()
         }
+
+        // Keep album list scroll state at this level so it survives isLoading toggles
+        val albumListState = rememberLazyListState()
 
         Box(modifier = modifier.fillMaxSize()) {
             when {
@@ -122,14 +159,21 @@ fun MainScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Left: ToDelete badge (only if count > 0)
-                            if (uiState.toDeleteCount > 0) {
-                                ToDeleteBadge(
-                                    count = uiState.toDeleteCount,
-                                    onClick = onNavigateToDelete
-                                )
-                            } else {
-                                Spacer(modifier = Modifier.width(48.dp))
+                            // Left: ToDelete badge and Undo button
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (uiState.toDeleteCount > 0) {
+                                    ToDeleteBadge(
+                                        count = uiState.toDeleteCount,
+                                        onClick = onNavigateToDelete
+                                    )
+                                }
+                                // Undo button (only if available)
+                                if (uiState.lastAction != null) {
+                                    UndoButton(onClick = { viewModel.undoLastAction() })
+                                }
                             }
 
                             // Right: Settings icon
@@ -193,11 +237,27 @@ fun MainScreen(
                                     }
                                 }
 
-                                // Swipe hints row with undo button in center
-                                SwipeHintsWithUndo(
-                                    showUndo = uiState.lastAction != null,
-                                    onUndo = { viewModel.undoLastAction() },
-                                    modifier = Modifier.padding(bottom = 16.dp)
+                                // Full storage access prompt (Android 11+)
+                                // Only show if not already granted and user hasn't dismissed
+                                var promptDismissed by rememberSaveable { mutableStateOf(false) }
+                                val needsStorageAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                                    !hasFullStorageAccess()
+
+                                if (needsStorageAccess && !promptDismissed) {
+                                    FullStorageAccessPrompt(
+                                        onDismiss = { promptDismissed = true },
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                }
+
+                                // Album selector at bottom
+                                AlbumSelector(
+                                    albums = uiState.availableFolders,
+                                    currentAlbumId = uiState.currentPhotoAlbum?.bucketId,
+                                    onAlbumSelected = { viewModel.movePhotoToAlbum(it) },
+                                    isMoving = uiState.isMovingPhoto,
+                                    listState = albumListState,
+                                    modifier = Modifier.padding(bottom = 32.dp)
                                 )
                             }
                         }
@@ -209,54 +269,34 @@ fun MainScreen(
 }
 
 @Composable
-private fun SwipeHintsWithUndo(
-    showUndo: Boolean,
-    onUndo: () -> Unit,
+private fun UndoButton(
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = AccentPrimary.copy(alpha = 0.15f)
     ) {
-        // Left hint - simplified
-        Text(
-            text = "\u2190 Delete",
-            style = MaterialTheme.typography.bodyLarge,
-            color = ActionDelete,
-            fontWeight = FontWeight.Medium
-        )
-
-        // Center: Undo button (only if available)
-        if (showUndo) {
-            OutlinedButton(
-                onClick = onUndo,
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = AccentPrimary
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Refresh,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Text(text = "Undo")
-            }
-        } else {
-            // Invisible spacer to maintain layout
-            Spacer(modifier = Modifier.width(100.dp))
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Refresh,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = AccentPrimary
+            )
+            Text(
+                text = "Undo",
+                style = MaterialTheme.typography.labelLarge,
+                color = AccentPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
         }
-
-        // Right hint - simplified
-        Text(
-            text = "Keep \u2192",
-            style = MaterialTheme.typography.bodyLarge,
-            color = ActionKeep,
-            fontWeight = FontWeight.Medium
-        )
     }
 }
 
