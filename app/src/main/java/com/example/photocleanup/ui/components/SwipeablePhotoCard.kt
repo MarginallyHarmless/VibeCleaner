@@ -143,7 +143,7 @@ fun SwipeablePhotoCard(
                     contentScale = ContentScale.Fit
                 )
 
-                // Keep overlay (swipe left) - gradient from left
+                // Delete overlay (swipe left) - gradient from left
                 if (swipeProgress < -0.1f) {
                     Box(
                         modifier = Modifier
@@ -151,7 +151,7 @@ fun SwipeablePhotoCard(
                             .background(
                                 Brush.horizontalGradient(
                                     colors = listOf(
-                                        ActionKeep.copy(alpha = swipeProgress.absoluteValue * 0.7f),
+                                        ActionDelete.copy(alpha = swipeProgress.absoluteValue * 0.7f),
                                         Color.Transparent
                                     ),
                                     startX = 0f,
@@ -168,13 +168,13 @@ fun SwipeablePhotoCard(
                         verticalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.Check,
-                            contentDescription = "Keep",
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "Delete",
                             modifier = Modifier.size(64.dp),
                             tint = Color.White
                         )
                         Text(
-                            text = "KEEP",
+                            text = "DELETE",
                             style = MaterialTheme.typography.headlineMedium,
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
@@ -183,7 +183,7 @@ fun SwipeablePhotoCard(
                     }
                 }
 
-                // Delete overlay (swipe right) - gradient from right
+                // Keep overlay (swipe right) - gradient from right
                 if (swipeProgress > 0.1f) {
                     Box(
                         modifier = Modifier
@@ -192,7 +192,7 @@ fun SwipeablePhotoCard(
                                 Brush.horizontalGradient(
                                     colors = listOf(
                                         Color.Transparent,
-                                        ActionDelete.copy(alpha = swipeProgress.absoluteValue * 0.7f)
+                                        ActionKeep.copy(alpha = swipeProgress.absoluteValue * 0.7f)
                                     ),
                                     startX = 0f,
                                     endX = Float.POSITIVE_INFINITY
@@ -208,13 +208,13 @@ fun SwipeablePhotoCard(
                         verticalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = "Delete",
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = "Keep",
                             modifier = Modifier.size(64.dp),
                             tint = Color.White
                         )
                         Text(
-                            text = "DELETE",
+                            text = "KEEP",
                             style = MaterialTheme.typography.headlineMedium,
                             color = Color.White,
                             fontWeight = FontWeight.Bold,

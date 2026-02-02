@@ -183,8 +183,8 @@ fun MainScreen(
                                         key(photo) {
                                             SwipeablePhotoCard(
                                                 photo = photo,
-                                                onSwipeLeft = { viewModel.keepCurrentPhoto() },
-                                                onSwipeRight = { viewModel.markCurrentPhotoForDeletion() },
+                                                onSwipeLeft = { viewModel.markCurrentPhotoForDeletion() },
+                                                onSwipeRight = { viewModel.keepCurrentPhoto() },
                                                 modifier = Modifier
                                                     .fillMaxSize()
                                                     .zIndex(1f)
@@ -223,9 +223,9 @@ private fun SwipeHintsWithUndo(
     ) {
         // Left hint - simplified
         Text(
-            text = "\u2190 Keep",
+            text = "\u2190 Delete",
             style = MaterialTheme.typography.bodyLarge,
-            color = ActionKeep,
+            color = ActionDelete,
             fontWeight = FontWeight.Medium
         )
 
@@ -252,9 +252,9 @@ private fun SwipeHintsWithUndo(
 
         // Right hint - simplified
         Text(
-            text = "Delete \u2192",
+            text = "Keep \u2192",
             style = MaterialTheme.typography.bodyLarge,
-            color = ActionDelete,
+            color = ActionKeep,
             fontWeight = FontWeight.Medium
         )
     }
