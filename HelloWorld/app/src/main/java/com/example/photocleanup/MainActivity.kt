@@ -27,8 +27,10 @@ import com.example.photocleanup.ui.navigation.BottomNavItem
 import com.example.photocleanup.ui.screens.MainScreen
 import com.example.photocleanup.ui.screens.MenuScreen
 import com.example.photocleanup.ui.screens.SettingsTabScreen
+import com.example.photocleanup.ui.screens.DuplicatesScreen
 import com.example.photocleanup.ui.screens.ToDeleteScreen
 import com.example.photocleanup.ui.theme.CleanMyPhotosTheme
+import com.example.photocleanup.viewmodel.DuplicatesViewModel
 import com.example.photocleanup.viewmodel.MenuViewModel
 import com.example.photocleanup.viewmodel.PhotoViewModel
 import com.example.photocleanup.viewmodel.ToDeleteViewModel
@@ -58,6 +60,7 @@ class MainActivity : ComponentActivity() {
                     // Routes where bottom nav should be visible
                     val bottomNavRoutes = listOf(
                         BottomNavItem.Cleanup.route,
+                        BottomNavItem.Duplicates.route,
                         BottomNavItem.Settings.route
                     )
                     val showBottomNav = currentRoute in bottomNavRoutes
@@ -106,6 +109,14 @@ class MainActivity : ComponentActivity() {
                                             "main?mode=$modeParam&year=$yearParam&month=$monthParam&albumId=$albumIdParam&allMedia=$allMediaParam&title=$titleParam"
                                         )
                                     }
+                                )
+                            }
+
+                            // Duplicates tab
+                            composable(BottomNavItem.Duplicates.route) {
+                                val duplicatesViewModel: DuplicatesViewModel = viewModel()
+                                DuplicatesScreen(
+                                    viewModel = duplicatesViewModel
                                 )
                             }
 

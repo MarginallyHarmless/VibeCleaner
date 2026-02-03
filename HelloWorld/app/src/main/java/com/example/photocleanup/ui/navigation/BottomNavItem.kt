@@ -1,6 +1,7 @@
 package com.example.photocleanup.ui.navigation
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -16,6 +17,12 @@ sealed class BottomNavItem(
         icon = Icons.Filled.Photo
     )
 
+    object Duplicates : BottomNavItem(
+        route = "duplicates",
+        title = "Duplicates",
+        icon = Icons.Filled.ContentCopy
+    )
+
     object Settings : BottomNavItem(
         route = "settings_tab",
         title = "Settings",
@@ -23,6 +30,7 @@ sealed class BottomNavItem(
     )
 
     companion object {
-        val items: List<BottomNavItem> by lazy { listOf(Cleanup, Settings) }
+        val items: List<BottomNavItem>
+            get() = listOf(Cleanup, Duplicates, Settings)
     }
 }
