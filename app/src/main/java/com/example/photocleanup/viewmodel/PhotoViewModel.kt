@@ -121,8 +121,8 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
                 repository.getUnreviewedPhotos()
             } else {
                 when {
-                    menuFilter.isRecentPhotos -> {
-                        repository.loadRecentPhotos()
+                    menuFilter.isAllMedia -> {
+                        repository.loadAllMedia()
                     }
                     menuFilter.year != null && menuFilter.month != null -> {
                         repository.loadPhotosByMonth(menuFilter.year, menuFilter.month)

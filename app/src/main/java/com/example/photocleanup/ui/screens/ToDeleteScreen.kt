@@ -55,9 +55,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.photocleanup.data.ReviewedPhoto
-import com.example.photocleanup.ui.theme.VibeCoral
-import com.example.photocleanup.ui.theme.VibeDelete
-import com.example.photocleanup.ui.theme.VibeKeep
+import com.example.photocleanup.ui.theme.AccentPrimary
+import com.example.photocleanup.ui.theme.ActionDelete
+import com.example.photocleanup.ui.theme.ActionKeep
 import com.example.photocleanup.viewmodel.ToDeleteViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -133,7 +133,7 @@ fun ToDeleteScreen(
                         onClick = { viewModel.restoreSelected() },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = VibeKeep
+                            contentColor = ActionKeep
                         )
                     ) {
                         Icon(
@@ -149,7 +149,7 @@ fun ToDeleteScreen(
                         onClick = { viewModel.requestBulkDelete() },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = VibeDelete
+                            containerColor = ActionDelete
                         )
                     ) {
                         Icon(
@@ -174,7 +174,7 @@ fun ToDeleteScreen(
                 uiState.isLoading -> {
                     CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.Center),
-                        color = VibeCoral
+                        color = AccentPrimary
                     )
                 }
 
@@ -224,7 +224,7 @@ private fun PhotoGridItem(
                 if (isSelected) {
                     Modifier.border(
                         width = 3.dp,
-                        color = VibeCoral,
+                        color = AccentPrimary,
                         shape = RoundedCornerShape(8.dp)
                     )
                 } else {
@@ -251,7 +251,7 @@ private fun PhotoGridItem(
                     .align(Alignment.TopEnd)
                     .padding(6.dp)
                     .size(24.dp)
-                    .background(VibeCoral, CircleShape),
+                    .background(AccentPrimary, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -276,7 +276,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
             imageVector = Icons.Default.CheckCircle,
             contentDescription = null,
             modifier = Modifier.size(72.dp),
-            tint = VibeKeep
+            tint = ActionKeep
         )
 
         Spacer(modifier = Modifier.size(16.dp))
@@ -285,7 +285,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
             text = "All Clear!",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            color = VibeKeep
+            color = ActionKeep
         )
 
         Spacer(modifier = Modifier.size(8.dp))

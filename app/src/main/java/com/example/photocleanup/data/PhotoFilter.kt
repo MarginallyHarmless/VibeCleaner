@@ -55,7 +55,7 @@ data class AlbumGroup(
     val unreviewedCount: Int get() = totalCount - reviewedCount
 }
 
-data class RecentPhotosStats(
+data class AllMediaStats(
     val totalCount: Int,
     val reviewedCount: Int
 ) {
@@ -67,6 +67,6 @@ data class MenuFilter(
     val year: Int? = null,
     val month: Int? = null,
     val albumBucketId: Long? = null,
-    val isRecentPhotos: Boolean = false,
+    val isAllMedia: Boolean = false,
     val displayTitle: String = ""  // For showing in the header (e.g., "January 2024" or "Camera")
 )

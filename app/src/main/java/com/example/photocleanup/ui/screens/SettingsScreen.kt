@@ -57,9 +57,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.photocleanup.data.DateRangeFilter
 import com.example.photocleanup.data.FolderInfo
-import com.example.photocleanup.ui.theme.VibeCoral
-import com.example.photocleanup.ui.theme.VibeCoralLight
-import com.example.photocleanup.ui.theme.VibeDelete
+import com.example.photocleanup.ui.theme.AccentPrimary
+import com.example.photocleanup.ui.theme.AccentPrimaryMuted
 import com.example.photocleanup.viewmodel.PhotoViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -131,8 +130,8 @@ fun SettingsScreen(
                             onClick = { viewModel.setDateRange(dateRange) },
                             label = { Text(dateRange.displayName()) },
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = VibeCoral.copy(alpha = 0.2f),
-                                selectedLabelColor = VibeCoral
+                                selectedContainerColor = AccentPrimary.copy(alpha = 0.2f),
+                                selectedLabelColor = AccentPrimary
                             )
                         )
                     }
@@ -157,7 +156,7 @@ fun SettingsScreen(
                     Text(
                         text = "${uiState.filter.selectedFolders.size} selected",
                         style = MaterialTheme.typography.bodySmall,
-                        color = VibeCoral
+                        color = AccentPrimary
                     )
                 }
             }
@@ -170,7 +169,7 @@ fun SettingsScreen(
                             .height(100.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(color = VibeCoral)
+                        CircularProgressIndicator(color = AccentPrimary)
                     }
                 }
             } else {
@@ -238,8 +237,8 @@ fun SettingsScreen(
                         Button(
                             onClick = { showResetDialog = true },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = VibeCoralLight.copy(alpha = 0.3f),
-                                contentColor = VibeCoral
+                                containerColor = AccentPrimaryMuted.copy(alpha = 0.3f),
+                                contentColor = AccentPrimary
                             ),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
@@ -286,7 +285,7 @@ fun SettingsScreen(
                         onNavigateBack()
                     }
                 ) {
-                    Text("Reset", color = VibeCoral)
+                    Text("Reset", color = AccentPrimary)
                 }
             },
             dismissButton = {
@@ -310,7 +309,7 @@ private fun FolderItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick),
-        color = if (isSelected) VibeCoral.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface,
+        color = if (isSelected) AccentPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
@@ -322,7 +321,7 @@ private fun FolderItem(
             Icon(
                 imageVector = Icons.Default.Folder,
                 contentDescription = null,
-                tint = if (isSelected) VibeCoral else MaterialTheme.colorScheme.onSurfaceVariant
+                tint = if (isSelected) AccentPrimary else MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -343,7 +342,7 @@ private fun FolderItem(
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = "Selected",
-                    tint = VibeCoral,
+                    tint = AccentPrimary,
                     modifier = Modifier.size(20.dp)
                 )
             }

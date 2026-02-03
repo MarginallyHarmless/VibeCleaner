@@ -52,11 +52,11 @@ class MainActivity : ComponentActivity() {
                                     val yearParam = filter.year ?: -1
                                     val monthParam = filter.month ?: -1
                                     val albumIdParam = filter.albumBucketId ?: -1L
-                                    val recentParam = filter.isRecentPhotos
+                                    val allMediaParam = filter.isAllMedia
                                     val titleParam = Uri.encode(filter.displayTitle)
 
                                     navController.navigate(
-                                        "main?mode=$modeParam&year=$yearParam&month=$monthParam&albumId=$albumIdParam&recent=$recentParam&title=$titleParam"
+                                        "main?mode=$modeParam&year=$yearParam&month=$monthParam&albumId=$albumIdParam&allMedia=$allMediaParam&title=$titleParam"
                                     )
                                 }
                             )
@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
 
                         // Main swipe screen with optional filter parameters
                         composable(
-                            route = "main?mode={mode}&year={year}&month={month}&albumId={albumId}&recent={recent}&title={title}",
+                            route = "main?mode={mode}&year={year}&month={month}&albumId={albumId}&allMedia={allMedia}&title={title}",
                             arguments = listOf(
                                 navArgument("mode") {
                                     type = NavType.StringType
@@ -82,7 +82,7 @@ class MainActivity : ComponentActivity() {
                                     type = NavType.LongType
                                     defaultValue = -1L
                                 },
-                                navArgument("recent") {
+                                navArgument("allMedia") {
                                     type = NavType.BoolType
                                     defaultValue = false
                                 },
@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
                             val year = backStackEntry.arguments?.getInt("year") ?: -1
                             val month = backStackEntry.arguments?.getInt("month") ?: -1
                             val albumId = backStackEntry.arguments?.getLong("albumId") ?: -1L
-                            val recent = backStackEntry.arguments?.getBoolean("recent") ?: false
+                            val allMedia = backStackEntry.arguments?.getBoolean("allMedia") ?: false
                             val title = backStackEntry.arguments?.getString("title") ?: ""
 
                             // Build MenuFilter from URL parameters
@@ -106,7 +106,7 @@ class MainActivity : ComponentActivity() {
                                     year = if (year >= 0) year else null,
                                     month = if (month >= 0) month else null,
                                     albumBucketId = if (albumId >= 0) albumId else null,
-                                    isRecentPhotos = recent,
+                                    isAllMedia = allMedia,
                                     displayTitle = title
                                 )
                             } else null

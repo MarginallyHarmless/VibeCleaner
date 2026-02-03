@@ -8,7 +8,7 @@ import com.example.photocleanup.data.AlbumGroup
 import com.example.photocleanup.data.MenuMode
 import com.example.photocleanup.data.MonthGroup
 import com.example.photocleanup.data.PhotoRepository
-import com.example.photocleanup.data.RecentPhotosStats
+import com.example.photocleanup.data.AllMediaStats
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,7 +19,7 @@ data class MenuUiState(
     val menuMode: MenuMode = MenuMode.BY_DATE,
     val monthGroups: List<MonthGroup> = emptyList(),
     val albumGroups: List<AlbumGroup> = emptyList(),
-    val recentPhotosStats: RecentPhotosStats? = null,
+    val allMediaStats: AllMediaStats? = null,
     val hasAnyUnreviewedPhotos: Boolean = true
 )
 
@@ -41,7 +41,7 @@ class MenuViewModel(application: Application) : AndroidViewModel(application) {
             // Load all data in parallel
             val monthGroups = repository.getPhotosByMonth()
             val albumGroups = repository.getPhotosByAlbum()
-            val recentStats = repository.getRecentPhotosStats()
+            val allMediaStats = repository.getAllMediaStats()
 
             // Check if there are any unreviewed photos
             val hasUnreviewed = monthGroups.isNotEmpty() || albumGroups.isNotEmpty()
@@ -50,7 +50,7 @@ class MenuViewModel(application: Application) : AndroidViewModel(application) {
                 isLoading = false,
                 monthGroups = monthGroups,
                 albumGroups = albumGroups,
-                recentPhotosStats = recentStats,
+                allMediaStats = allMediaStats,
                 hasAnyUnreviewedPhotos = hasUnreviewed
             )
         }

@@ -19,8 +19,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.photocleanup.ui.theme.VibeCoral
-import com.example.photocleanup.ui.theme.VibePeach
+import com.example.photocleanup.ui.theme.AccentPrimary
+import com.example.photocleanup.ui.theme.AccentPrimaryMuted
 
 @Composable
 fun ProgressIndicator(
@@ -73,7 +73,7 @@ fun ProgressIndicator(
                     .clip(RoundedCornerShape(4.dp))
                     .background(
                         Brush.horizontalGradient(
-                            colors = listOf(VibeCoral, VibePeach)
+                            colors = listOf(AccentPrimary, AccentPrimaryMuted)
                         )
                     )
             )

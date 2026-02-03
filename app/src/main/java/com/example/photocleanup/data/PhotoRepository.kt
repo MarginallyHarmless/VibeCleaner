@@ -534,21 +534,18 @@ class PhotoRepository(
     }
 
     /**
-     * Get stats for recent photos (last N days).
-     * Returns null if there are no recent photos.
+     * Get stats for all media on the device.
+     * Returns null if there are no photos or all are reviewed.
      */
-    suspend fun getRecentPhotosStats(days: Int = 7): RecentPhotosStats? = withContext(Dispatchers.IO) {
-        val minTimestamp = (System.currentTimeMillis() / 1000) - TimeUnit.DAYS.toSeconds(days.toLong())
+    suspend fun getAllMediaStats(): AllMediaStats? = withContext(Dispatchers.IO) {
         val uris = mutableListOf<String>()
         val projection = arrayOf(MediaStore.Images.Media._ID)
-        val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
-        val selectionArgs = arrayOf(minTimestamp.toString())
 
         context.contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             projection,
-            selection,
-            selectionArgs,
+            null,
+            null,
             null
         )?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
@@ -570,7 +567,7 @@ class PhotoRepository(
 
         // Only return if there are unreviewed photos
         if (unreviewedCount > 0) {
-            RecentPhotosStats(
+            AllMediaStats(
                 totalCount = uris.size,
                 reviewedCount = reviewedCount
             )
@@ -659,21 +656,18 @@ class PhotoRepository(
     }
 
     /**
-     * Load recent photos (last N days, unreviewed only).
+     * Load all media (unreviewed only).
      */
-    suspend fun loadRecentPhotos(days: Int = 7): List<Uri> = withContext(Dispatchers.IO) {
-        val minTimestamp = (System.currentTimeMillis() / 1000) - TimeUnit.DAYS.toSeconds(days.toLong())
+    suspend fun loadAllMedia(): List<Uri> = withContext(Dispatchers.IO) {
         val photos = mutableListOf<Uri>()
         val projection = arrayOf(MediaStore.Images.Media._ID)
-        val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
-        val selectionArgs = arrayOf(minTimestamp.toString())
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
         context.contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             projection,
-            selection,
-            selectionArgs,
+            null,
+            null,
             sortOrder
         )?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)

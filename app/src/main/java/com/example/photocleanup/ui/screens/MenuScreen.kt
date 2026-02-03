@@ -152,20 +152,20 @@ fun MenuScreen(
                         ) {
                             when (uiState.menuMode) {
                                 MenuMode.BY_DATE -> {
-                                    // Recent Photos card (if available)
-                                    uiState.recentPhotosStats?.let { stats ->
-                                        item(key = "recent") {
+                                    // All Media card (if available)
+                                    uiState.allMediaStats?.let { stats ->
+                                        item(key = "all_media") {
                                             MenuCard(
-                                                title = stringResource(R.string.menu_recent_photos),
+                                                title = stringResource(R.string.menu_all_media),
                                                 reviewedCount = stats.reviewedCount,
                                                 totalCount = stats.totalCount,
-                                                cardType = MenuCardType.RECENT,
+                                                cardType = MenuCardType.ALL_MEDIA,
                                                 onClick = {
                                                     onNavigateToSwipe(
                                                         MenuFilter(
                                                             mode = MenuMode.BY_DATE,
-                                                            isRecentPhotos = true,
-                                                            displayTitle = "Recent Photos"
+                                                            isAllMedia = true,
+                                                            displayTitle = "All Media"
                                                         )
                                                     )
                                                 }
