@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
 class PhotoRepository(
@@ -397,5 +398,297 @@ class PhotoRepository(
         } catch (e: Exception) {
             MoveResult.Error(e.message ?: "Failed to move file")
         }
+    }
+
+    // ==================== Menu Screen Methods ====================
+
+    /**
+     * Get photos grouped by month with review counts.
+     * Only returns months that have unreviewed photos.
+     */
+    suspend fun getPhotosByMonth(): List<MonthGroup> = withContext(Dispatchers.IO) {
+        val monthCounts = mutableMapOf<Pair<Int, Int>, MutableList<String>>()  // (year, month) -> list of URIs
+        val projection = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.DATE_ADDED
+        )
+        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
+        context.contentResolver.query(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            null,
+            null,
+            sortOrder
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+            val calendar = Calendar.getInstance()
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val dateAdded = cursor.getLong(dateColumn)
+                val uri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    id
+                ).toString()
+
+                // Convert timestamp (seconds) to year/month
+                calendar.timeInMillis = dateAdded * 1000
+                val year = calendar.get(Calendar.YEAR)
+                val month = calendar.get(Calendar.MONTH)
+
+                val key = year to month
+                monthCounts.getOrPut(key) { mutableListOf() }.add(uri)
+            }
+        }
+
+        val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
+        val monthNames = arrayOf(
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        )
+
+        monthCounts.mapNotNull { (yearMonth, uris) ->
+            val (year, month) = yearMonth
+            val totalCount = uris.size
+            val reviewedCount = uris.count { it in reviewedUris }
+            val unreviewedCount = totalCount - reviewedCount
+
+            // Only include months with unreviewed photos
+            if (unreviewedCount > 0) {
+                MonthGroup(
+                    year = year,
+                    month = month,
+                    displayName = "${monthNames[month]} $year",
+                    totalCount = totalCount,
+                    reviewedCount = reviewedCount
+                )
+            } else {
+                null
+            }
+        }.sortedWith(compareByDescending<MonthGroup> { it.year }.thenByDescending { it.month })
+    }
+
+    /**
+     * Get photos grouped by album with review counts.
+     * Only returns albums that have unreviewed photos.
+     */
+    suspend fun getPhotosByAlbum(): List<AlbumGroup> = withContext(Dispatchers.IO) {
+        val albumCounts = mutableMapOf<Long, Pair<String, MutableList<String>>>()  // bucketId -> (name, list of URIs)
+        val projection = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.BUCKET_ID,
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME
+        )
+
+        context.contentResolver.query(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
+            val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+
+            while (cursor.moveToNext()) {
+                val photoId = cursor.getLong(idColumn)
+                val bucketId = cursor.getLong(bucketIdColumn)
+                val bucketName = cursor.getString(bucketNameColumn) ?: "Unknown"
+                val uri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    photoId
+                ).toString()
+
+                val existing = albumCounts[bucketId]
+                if (existing != null) {
+                    existing.second.add(uri)
+                } else {
+                    albumCounts[bucketId] = bucketName to mutableListOf(uri)
+                }
+            }
+        }
+
+        val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
+
+        albumCounts.mapNotNull { (bucketId, nameAndUris) ->
+            val (name, uris) = nameAndUris
+            val totalCount = uris.size
+            val reviewedCount = uris.count { it in reviewedUris }
+            val unreviewedCount = totalCount - reviewedCount
+
+            // Only include albums with unreviewed photos
+            if (unreviewedCount > 0) {
+                AlbumGroup(
+                    bucketId = bucketId,
+                    displayName = name,
+                    totalCount = totalCount,
+                    reviewedCount = reviewedCount
+                )
+            } else {
+                null
+            }
+        }.sortedBy { it.displayName.lowercase() }
+    }
+
+    /**
+     * Get stats for recent photos (last N days).
+     * Returns null if there are no recent photos.
+     */
+    suspend fun getRecentPhotosStats(days: Int = 7): RecentPhotosStats? = withContext(Dispatchers.IO) {
+        val minTimestamp = (System.currentTimeMillis() / 1000) - TimeUnit.DAYS.toSeconds(days.toLong())
+        val uris = mutableListOf<String>()
+        val projection = arrayOf(MediaStore.Images.Media._ID)
+        val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
+        val selectionArgs = arrayOf(minTimestamp.toString())
+
+        context.contentResolver.query(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            null
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val uri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    id
+                ).toString()
+                uris.add(uri)
+            }
+        }
+
+        if (uris.isEmpty()) return@withContext null
+
+        val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
+        val reviewedCount = uris.count { it in reviewedUris }
+        val unreviewedCount = uris.size - reviewedCount
+
+        // Only return if there are unreviewed photos
+        if (unreviewedCount > 0) {
+            RecentPhotosStats(
+                totalCount = uris.size,
+                reviewedCount = reviewedCount
+            )
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Load photos for a specific month (unreviewed only).
+     */
+    suspend fun loadPhotosByMonth(year: Int, month: Int): List<Uri> = withContext(Dispatchers.IO) {
+        val photos = mutableListOf<Uri>()
+        val projection = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.DATE_ADDED
+        )
+        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
+        context.contentResolver.query(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            null,
+            null,
+            sortOrder
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+            val calendar = Calendar.getInstance()
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val dateAdded = cursor.getLong(dateColumn)
+
+                // Convert timestamp (seconds) to year/month
+                calendar.timeInMillis = dateAdded * 1000
+                val photoYear = calendar.get(Calendar.YEAR)
+                val photoMonth = calendar.get(Calendar.MONTH)
+
+                if (photoYear == year && photoMonth == month) {
+                    val uri = ContentUris.withAppendedId(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        id
+                    )
+                    photos.add(uri)
+                }
+            }
+        }
+
+        // Filter out reviewed photos
+        val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
+        photos.filter { it.toString() !in reviewedUris }
+    }
+
+    /**
+     * Load photos for a specific album (unreviewed only).
+     */
+    suspend fun loadPhotosByAlbumId(bucketId: Long): List<Uri> = withContext(Dispatchers.IO) {
+        val photos = mutableListOf<Uri>()
+        val projection = arrayOf(MediaStore.Images.Media._ID)
+        val selection = "${MediaStore.Images.Media.BUCKET_ID} = ?"
+        val selectionArgs = arrayOf(bucketId.toString())
+        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
+        context.contentResolver.query(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            sortOrder
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val uri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    id
+                )
+                photos.add(uri)
+            }
+        }
+
+        // Filter out reviewed photos
+        val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
+        photos.filter { it.toString() !in reviewedUris }
+    }
+
+    /**
+     * Load recent photos (last N days, unreviewed only).
+     */
+    suspend fun loadRecentPhotos(days: Int = 7): List<Uri> = withContext(Dispatchers.IO) {
+        val minTimestamp = (System.currentTimeMillis() / 1000) - TimeUnit.DAYS.toSeconds(days.toLong())
+        val photos = mutableListOf<Uri>()
+        val projection = arrayOf(MediaStore.Images.Media._ID)
+        val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?"
+        val selectionArgs = arrayOf(minTimestamp.toString())
+        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
+        context.contentResolver.query(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            selectionArgs,
+            sortOrder
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val uri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    id
+                )
+                photos.add(uri)
+            }
+        }
+
+        // Filter out reviewed photos
+        val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
+        photos.filter { it.toString() !in reviewedUris }
     }
 }

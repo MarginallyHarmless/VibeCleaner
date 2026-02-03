@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -57,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.example.photocleanup.data.MenuFilter
 import com.example.photocleanup.ui.components.AlbumSelector
 import com.example.photocleanup.ui.components.ProgressIndicator
 import com.example.photocleanup.ui.components.SwipeablePhotoCard
@@ -74,6 +76,8 @@ fun MainScreen(
     viewModel: PhotoViewModel,
     onNavigateToSettings: () -> Unit,
     onNavigateToDelete: () -> Unit,
+    onNavigateBack: (() -> Unit)? = null,
+    menuFilter: MenuFilter? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -129,11 +133,21 @@ fun MainScreen(
 
     if (!permissionState.status.isGranted) {
         PermissionScreen(
-            onPermissionGranted = { viewModel.loadPhotos() }
+            onPermissionGranted = {
+                if (menuFilter != null) {
+                    viewModel.loadPhotosWithMenuFilter(menuFilter)
+                } else {
+                    viewModel.loadPhotos()
+                }
+            }
         )
     } else {
-        LaunchedEffect(Unit) {
-            viewModel.loadPhotos()
+        LaunchedEffect(menuFilter) {
+            if (menuFilter != null) {
+                viewModel.loadPhotosWithMenuFilter(menuFilter)
+            } else {
+                viewModel.loadPhotos()
+            }
             viewModel.loadAvailableFolders()
         }
 
@@ -159,11 +173,21 @@ fun MainScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Left: ToDelete badge and Undo button
+                            // Left side: Back button (if from menu), ToDelete badge, Undo button
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                // Back button if navigating from menu
+                                if (onNavigateBack != null) {
+                                    IconButton(onClick = onNavigateBack) {
+                                        Icon(
+                                            imageVector = Icons.Filled.ArrowBack,
+                                            contentDescription = "Back to menu"
+                                        )
+                                    }
+                                }
+
                                 if (uiState.toDeleteCount > 0) {
                                     ToDeleteBadge(
                                         count = uiState.toDeleteCount,
@@ -183,6 +207,17 @@ fun MainScreen(
                                     contentDescription = "Settings"
                                 )
                             }
+                        }
+
+                        // Context header when filtering from menu
+                        if (menuFilter != null && menuFilter.displayTitle.isNotEmpty()) {
+                            Text(
+                                text = menuFilter.displayTitle,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = AccentPrimary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            )
                         }
 
                         // Content area

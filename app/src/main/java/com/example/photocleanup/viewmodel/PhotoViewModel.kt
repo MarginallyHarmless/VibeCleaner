@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.photocleanup.PhotoCleanupApp
 import com.example.photocleanup.data.DateRangeFilter
 import com.example.photocleanup.data.FolderInfo
+import com.example.photocleanup.data.MenuFilter
 import com.example.photocleanup.data.MoveResult
 import com.example.photocleanup.data.PhotoFilter
 import com.example.photocleanup.data.PhotoRepository
@@ -48,13 +49,16 @@ data class PhotoUiState(
     val moveIntentSender: IntentSender? = null,
     val pendingMoveAlbum: String? = null,
     val pendingMoveSourceAlbumId: Long? = null,
-    val moveError: String? = null
+    val moveError: String? = null,
+    // Menu filter state
+    val menuFilter: MenuFilter? = null
 ) {
     val currentPhoto: Uri? get() = photos.getOrNull(currentIndex)
     val nextPhoto: Uri? get() = photos.getOrNull(currentIndex + 1)
     val hasPhotos: Boolean get() = photos.isNotEmpty()
     val isAllDone: Boolean get() = !isLoading && photos.isEmpty()
     val hasActiveFilters: Boolean get() = filter.selectedFolders.isNotEmpty() || filter.dateRange != DateRangeFilter.ALL
+    val menuFilterTitle: String get() = menuFilter?.displayTitle ?: ""
 }
 
 class PhotoViewModel(application: Application) : AndroidViewModel(application) {
@@ -103,6 +107,41 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
                 isLoading = false,
                 totalPhotosCount = filteredPhotos.size,
                 reviewedCount = filteredPhotos.size - unreviewedPhotos.size,
+                showCelebration = true
+            )
+        }
+    }
+
+    fun loadPhotosWithMenuFilter(menuFilter: MenuFilter?) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, menuFilter = menuFilter)
+
+            val unreviewedPhotos = if (menuFilter == null) {
+                // No filter - load all unreviewed photos
+                repository.getUnreviewedPhotos()
+            } else {
+                when {
+                    menuFilter.isRecentPhotos -> {
+                        repository.loadRecentPhotos()
+                    }
+                    menuFilter.year != null && menuFilter.month != null -> {
+                        repository.loadPhotosByMonth(menuFilter.year, menuFilter.month)
+                    }
+                    menuFilter.albumBucketId != null -> {
+                        repository.loadPhotosByAlbumId(menuFilter.albumBucketId)
+                    }
+                    else -> {
+                        repository.getUnreviewedPhotos()
+                    }
+                }
+            }
+
+            _uiState.value = _uiState.value.copy(
+                photos = unreviewedPhotos,
+                currentIndex = 0,
+                isLoading = false,
+                totalPhotosCount = unreviewedPhotos.size,
+                reviewedCount = 0,
                 showCelebration = true
             )
         }
