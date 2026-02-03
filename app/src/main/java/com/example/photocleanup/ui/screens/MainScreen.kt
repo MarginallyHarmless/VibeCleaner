@@ -173,10 +173,9 @@ fun MainScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Left side: Back button (if from menu), ToDelete badge, Undo button
+                            // Left side: Back button + Title
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 // Back button if navigating from menu
                                 if (onNavigateBack != null) {
@@ -188,15 +187,14 @@ fun MainScreen(
                                     }
                                 }
 
-                                if (uiState.toDeleteCount > 0) {
-                                    ToDeleteBadge(
-                                        count = uiState.toDeleteCount,
-                                        onClick = onNavigateToDelete
+                                // Title next to back arrow
+                                if (menuFilter != null && menuFilter.displayTitle.isNotEmpty()) {
+                                    Text(
+                                        text = menuFilter.displayTitle,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.White
                                     )
-                                }
-                                // Undo button (only if available)
-                                if (uiState.lastAction != null) {
-                                    UndoButton(onClick = { viewModel.undoLastAction() })
                                 }
                             }
 
@@ -209,15 +207,25 @@ fun MainScreen(
                             }
                         }
 
-                        // Context header when filtering from menu
-                        if (menuFilter != null && menuFilter.displayTitle.isNotEmpty()) {
-                            Text(
-                                text = menuFilter.displayTitle,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = AccentPrimary,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                            )
+                        // Delete/Undo buttons row (below title)
+                        if (uiState.toDeleteCount > 0 || uiState.lastAction != null) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (uiState.toDeleteCount > 0) {
+                                    ToDeleteBadge(
+                                        count = uiState.toDeleteCount,
+                                        onClick = onNavigateToDelete
+                                    )
+                                }
+                                if (uiState.lastAction != null) {
+                                    UndoButton(onClick = { viewModel.undoLastAction() })
+                                }
+                            }
                         }
 
                         // Content area
