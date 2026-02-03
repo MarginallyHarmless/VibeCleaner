@@ -1,7 +1,6 @@
 package com.example.photocleanup.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,10 +19,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.photocleanup.ui.theme.AccentPrimary
 
 enum class MenuCardType {
     RECENT,
@@ -58,44 +57,30 @@ fun MenuCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                modifier = Modifier.size(32.dp),
-                tint = AccentPrimary
+                modifier = Modifier.size(24.dp),
+                tint = Color.White
             )
 
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                modifier = Modifier.weight(1f)
+            )
 
-                Text(
-                    text = "$reviewedCount reviewed / $totalCount total",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            // Show unreviewed count as badge
-            val unreviewedCount = totalCount - reviewedCount
-            if (unreviewedCount > 0) {
-                Text(
-                    text = unreviewedCount.toString(),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = AccentPrimary
-                )
-            }
+            Text(
+                text = "$reviewedCount/$totalCount",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.7f)
+            )
         }
     }
 }

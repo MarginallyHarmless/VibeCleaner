@@ -3,9 +3,12 @@ package com.example.photocleanup.ui.screens
 import android.Manifest
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,9 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -95,26 +97,50 @@ fun MenuScreen(
                             text = stringResource(R.string.menu_title),
                             style = MaterialTheme.typography.displaySmall,
                             fontWeight = FontWeight.Bold,
-                            color = AccentPrimary,
+                            color = Color.White,
                             modifier = Modifier.padding(bottom = 24.dp)
                         )
 
-                        // Tab row for mode selection
-                        TabRow(
-                            selectedTabIndex = if (uiState.menuMode == MenuMode.BY_DATE) 0 else 1,
-                            containerColor = Color.Transparent,
-                            contentColor = AccentPrimary
+                        // Custom segmented controller
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(IntrinsicSize.Min)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                         ) {
-                            Tab(
-                                selected = uiState.menuMode == MenuMode.BY_DATE,
-                                onClick = { viewModel.setMenuMode(MenuMode.BY_DATE) },
-                                text = { Text(stringResource(R.string.menu_by_date)) }
-                            )
-                            Tab(
-                                selected = uiState.menuMode == MenuMode.BY_ALBUM,
-                                onClick = { viewModel.setMenuMode(MenuMode.BY_ALBUM) },
-                                text = { Text(stringResource(R.string.menu_by_album)) }
-                            )
+                            // "By Date" segment
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (uiState.menuMode == MenuMode.BY_DATE) AccentPrimary else Color.Transparent)
+                                    .clickable { viewModel.setMenuMode(MenuMode.BY_DATE) }
+                                    .padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.menu_by_date),
+                                    color = if (uiState.menuMode == MenuMode.BY_DATE) Color.White else Color.White.copy(alpha = 0.6f),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            // "By Album" segment
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (uiState.menuMode == MenuMode.BY_ALBUM) AccentPrimary else Color.Transparent)
+                                    .clickable { viewModel.setMenuMode(MenuMode.BY_ALBUM) }
+                                    .padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.menu_by_album),
+                                    color = if (uiState.menuMode == MenuMode.BY_ALBUM) Color.White else Color.White.copy(alpha = 0.6f),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
