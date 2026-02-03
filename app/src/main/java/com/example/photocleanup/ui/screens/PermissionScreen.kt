@@ -97,9 +97,9 @@ fun PermissionScreen(
 
             Text(
                 text = if (permissionState.status.shouldShowRationale) {
-                    "Vibe Cleaner needs access to your photos to help you review and organize them. Please grant permission to continue."
+                    "Clean My Photos needs access to your photos to help you review and organize them. Please grant permission to continue."
                 } else {
-                    "To review and clean up your photos, Vibe Cleaner needs permission to access your photo library."
+                    "To tidy up your photo chaos, we'll need a backstage pass to your library. Don't worry, your camera roll secrets are safe with us!"
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,

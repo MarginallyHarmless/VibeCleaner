@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "VibeCleaner"
+rootProject.name = "CleanMyPhotos"
 include(":app")
