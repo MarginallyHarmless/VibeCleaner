@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Clean My Photos</string>
+
+    <!-- Menu Screen -->
+    <string name="menu_title">Cleanup:</string>
+    <string name="menu_by_date">By Date</string>
+    <string name="menu_by_album">By Album</string>
+    <string name="menu_all_media">All Media</string>
+</resources>
