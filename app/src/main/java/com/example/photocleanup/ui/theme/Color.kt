@@ -3,28 +3,28 @@ package com.example.photocleanup.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // ============================================
-// Dark Theme Color Palette
+// Clean My Photos - Dark Theme Color Palette
 // ============================================
 
-// Background & Surface (Smooth Dark Grays with subtle cool undertone)
-val DarkBackground = Color(0xFF0D0D12)      // Near-black with cool tint
-val DarkSurface = Color(0xFF1A1A23)         // Elevated surface
-val DarkSurfaceVariant = Color(0xFF252532)  // Cards, containers
-val DarkSurfaceHigh = Color(0xFF2F2F3D)     // Highlighted surfaces
+// Background & Surface (Dark charcoal)
+val DarkBackground = Color(0xFF1A1A1A)      // Main background
+val DarkSurface = Color(0xFF2D2D2D)         // Cards, elevated surfaces
+val DarkSurfaceVariant = Color(0xFF3D3D3D)  // Containers, dividers
+val DarkSurfaceHigh = Color(0xFF4A4A4A)     // Highlighted surfaces
 
-// Primary Accent (Soft Coral - adjusted for dark backgrounds)
-val AccentPrimary = Color(0xFFFF9B7A)       // Soft peach coral
-val AccentPrimaryMuted = Color(0xFFCC7B61)  // Muted coral
-val AccentPrimaryDim = Color(0xFF8B5A47)    // Dim for containers
+// Primary Accent (Coral #FF6B6B)
+val AccentPrimary = Color(0xFFFF6B6B)       // Main coral accent
+val AccentPrimaryMuted = Color(0xFFCC5555)  // Muted coral for secondary uses
+val AccentPrimaryDim = Color(0xFF8B3D3D)    // Dim coral for containers
 
-// Action Colors (Adjusted for Dark)
-val ActionKeep = Color(0xFF6EE7A0)          // Soft mint green
-val ActionDelete = Color(0xFFFF8A8A)        // Soft coral red
+// Action Colors
+val ActionKeep = Color(0xFF51D88A)          // Mint green - swipe right/keep
+val ActionDelete = Color(0xFFFF6B6B)        // Coral - swipe left/delete
 
 // Text Colors
-val TextPrimary = Color(0xFFF5F5F7)         // Near-white, slightly warm
-val TextSecondary = Color(0xFF9999A5)       // Muted gray
-val TextMuted = Color(0xFF666673)           // Very muted
+val TextPrimary = Color(0xFFFFFFFF)         // White - main text
+val TextSecondary = Color(0xFFB0B0B0)       // Light gray - subtitles
+val TextMuted = Color(0xFF707070)           // Muted gray - hints
 
 // ============================================
 // Legacy names mapped to new palette

@@ -4,7 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
-private val VibeDarkColorScheme = darkColorScheme(
+private val CleanMyPhotosDarkColorScheme = darkColorScheme(
     primary = AccentPrimary,
     onPrimary = DarkBackground,
     primaryContainer = AccentPrimaryDim,
@@ -32,12 +32,12 @@ private val VibeDarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun VibeCleanerTheme(
+fun CleanMyPhotosTheme(
     content: @Composable () -> Unit
 ) {
-    // Always use dark theme - no system detection
+    // Always use dark theme - Clean My Photos brand
     MaterialTheme(
-        colorScheme = VibeDarkColorScheme,
+        colorScheme = CleanMyPhotosDarkColorScheme,
         typography = Typography,
         content = content
     )

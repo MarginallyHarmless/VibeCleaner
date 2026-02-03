@@ -19,7 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.photocleanup.ui.components.PrimaryButton
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.AccentPrimaryDim
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -108,20 +108,10 @@ fun PermissionScreen(
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            Button(
-                onClick = { permissionState.launchPermissionRequest() },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = AccentPrimary
-                )
-            ) {
-                Text(
-                    text = "Grant Permission",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-            }
+            PrimaryButton(
+                text = "Grant Permission",
+                onClick = { permissionState.launchPermissionRequest() }
+            )
         }
     }
 }
@@ -179,36 +169,31 @@ fun FullStorageAccessPrompt(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Button(
+            PrimaryButton(
+                text = "Open Settings",
                 onClick = {
                     val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
                         data = Uri.parse("package:${context.packageName}")
                     }
                     context.startActivity(intent)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = AccentPrimary
-                )
-            ) {
-                Text(
-                    text = "Open Settings",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-            }
+                }
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            OutlinedButton(
+            Button(
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AccentPrimary.copy(alpha = 0.15f),
+                    contentColor = AccentPrimary
+                )
             ) {
                 Text(
                     text = "Close",
                     style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
             }

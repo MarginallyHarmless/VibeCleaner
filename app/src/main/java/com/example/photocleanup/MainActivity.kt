@@ -3,7 +3,9 @@ package com.example.photocleanup
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -20,16 +22,21 @@ import com.example.photocleanup.ui.screens.MainScreen
 import com.example.photocleanup.ui.screens.MenuScreen
 import com.example.photocleanup.ui.screens.SettingsScreen
 import com.example.photocleanup.ui.screens.ToDeleteScreen
-import com.example.photocleanup.ui.theme.VibeCleanerTheme
+import com.example.photocleanup.ui.theme.CleanMyPhotosTheme
 import com.example.photocleanup.viewmodel.MenuViewModel
 import com.example.photocleanup.viewmodel.PhotoViewModel
 import com.example.photocleanup.viewmodel.ToDeleteViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Set status bar to match dark charcoal background (0xFF1A1A1A)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(0xFF1A1A1A.toInt()),
+            navigationBarStyle = SystemBarStyle.dark(0xFF1A1A1A.toInt())
+        )
         super.onCreate(savedInstanceState)
         setContent {
-            VibeCleanerTheme {
+            CleanMyPhotosTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
