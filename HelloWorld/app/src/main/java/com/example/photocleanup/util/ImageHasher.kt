@@ -131,12 +131,15 @@ object ImageHasher {
 
     // Temporal proximity boost - photos taken very close in time are likely related
     // even with significant hash differences (burst shots, slight movement between shots)
-    private const val TEMPORAL_CLOSE_SECONDS = 120L   // Photos within 2 minutes = close
-    private const val TEMPORAL_BURST_SECONDS = 60L    // Photos within 1 minute = likely burst
-    private const val TEMPORAL_RAPID_SECONDS = 30L    // Photos within 30 seconds = rapid burst (very likely same scene)
-    private const val TEMPORAL_CLOSE_BOOST = 8        // Extra tolerance for temporally close photos
-    private const val TEMPORAL_BURST_BOOST = 14       // Extra tolerance for likely burst shots
-    private const val TEMPORAL_RAPID_BOOST = 20       // Very aggressive tolerance for rapid bursts
+    // EXPERIMENT: 2-hour window with very tolerant matching
+    private const val TEMPORAL_SESSION_SECONDS = 7200L  // Photos within 2 hours = same session
+    private const val TEMPORAL_CLOSE_SECONDS = 300L     // Photos within 5 minutes = close
+    private const val TEMPORAL_BURST_SECONDS = 60L      // Photos within 1 minute = likely burst
+    private const val TEMPORAL_RAPID_SECONDS = 30L      // Photos within 30 seconds = rapid burst
+    private const val TEMPORAL_SESSION_BOOST = 4        // Small boost for same session (2 hours)
+    private const val TEMPORAL_CLOSE_BOOST = 12         // Strong boost for close photos (5 min)
+    private const val TEMPORAL_BURST_BOOST = 18         // Very strong boost for burst (1 min)
+    private const val TEMPORAL_RAPID_BOOST = 24         // Maximum boost for rapid shots (30 sec)
 
     // For rapid bursts, also relax entry thresholds (color/structure)
     // since temporal proximity is strong evidence of relationship
@@ -828,8 +831,8 @@ object ImageHasher {
      * color matching but have identical structural patterns.
      */
     data class BurstDetectionConfig(
-        val windowSizeSeconds: Long = 300,      // 5 minutes
-        val windowStepSeconds: Long = 150,      // 2.5 min overlap (catches boundary cases)
+        val windowSizeSeconds: Long = 7200,     // 2 hours - compare photos within same session
+        val windowStepSeconds: Long = 3600,     // 1 hour overlap (catches boundary cases)
         val dHashCertain: Int = 5,              // RESTORED from 8 - strict for certain matches
         val dHashThreshold: Int = 12,           // RESTORED from 16 - strict candidate selection
         val pHashThreshold: Int = 10,           // RESTORED from 14 - strict confirmation
@@ -914,6 +917,7 @@ object ImageHasher {
                 val isTemporalRapid = timeDiffSeconds <= TEMPORAL_RAPID_SECONDS
                 val isTemporalBurst = timeDiffSeconds <= TEMPORAL_BURST_SECONDS
                 val isTemporalClose = timeDiffSeconds <= TEMPORAL_CLOSE_SECONDS
+                val isTemporalSession = timeDiffSeconds <= TEMPORAL_SESSION_SECONDS
 
                 // Layer 0: DUAL-PATH ENTRY - Either color match OR structure match
                 // For rapid bursts (≤5 seconds), use relaxed entry thresholds since
@@ -983,6 +987,7 @@ object ImageHasher {
                     isTemporalRapid -> TEMPORAL_RAPID_BOOST
                     isTemporalBurst -> TEMPORAL_BURST_BOOST
                     isTemporalClose -> TEMPORAL_CLOSE_BOOST
+                    isTemporalSession -> TEMPORAL_SESSION_BOOST
                     else -> 0
                 }
                 thresholdBoost += (rawTemporalBoost * temporalBoostMultiplier).toInt()
@@ -1000,7 +1005,8 @@ object ImageHasher {
                     val timeLabel = when {
                         isTemporalRapid -> "rapid"
                         isTemporalBurst -> "burst"
-                        else -> "close"
+                        isTemporalClose -> "close"
+                        else -> "session"
                     }
                     val multiplierLabel = when {
                         temporalBoostMultiplier >= 1.0 -> "full"
