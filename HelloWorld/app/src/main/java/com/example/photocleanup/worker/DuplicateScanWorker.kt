@@ -360,12 +360,13 @@ class DuplicateScanWorker(
     }
 
     /**
-     * Group similar photo pairs using representative-based clustering.
+     * Group similar photo pairs using representative-based clustering with group merging.
      *
-     * Unlike Union-Find which creates transitive groups (A~B, B~C → {A,B,C}),
-     * this approach requires each photo to match the group's representative (first photo).
-     * This prevents "chaining" where unrelated photos end up in the same group
-     * through intermediate matches.
+     * When adding a photo to a group, it must match the group's representative.
+     * When two groups could be merged (both photos already in different groups),
+     * we merge them IF their representatives match each other.
+     * This prevents "chaining" through weak intermediate links while still
+     * allowing legitimate group merges.
      */
     private fun groupDuplicates(
         similarPairs: List<Pair<String, String>>,
@@ -411,8 +412,29 @@ class DuplicateScanWorker(
                     }
                 }
 
-                // Both are already in groups - don't merge (prevents chaining)
-                // Each photo stays in its original group
+                // Both are already in different groups - try to merge if representatives match
+                group1 != null && group2 != null && group1 != group2 -> {
+                    val rep1 = groups[group1]?.firstOrNull()
+                    val rep2 = groups[group2]?.firstOrNull()
+
+                    // Only merge if the representatives of both groups match each other
+                    // This prevents chaining through weak intermediate links
+                    if (rep1 != null && rep2 != null && matchesRepresentative(rep1, rep2, hashMap)) {
+                        // Merge group2 into group1
+                        val group2Members = groups[group2] ?: mutableListOf()
+                        groups[group1]?.addAll(group2Members)
+
+                        // Update all group2 members to point to group1
+                        for (member in group2Members) {
+                            photoToGroup[member] = group1
+                        }
+
+                        // Remove the old group
+                        groups.remove(group2)
+                    }
+                }
+
+                // Both in same group - nothing to do
             }
         }
 
@@ -421,6 +443,8 @@ class DuplicateScanWorker(
 
     /**
      * Check if a photo matches a group's representative using hash comparison.
+     * Uses a relaxed threshold since we're comparing representatives that were
+     * already determined to be similar to other photos in their groups.
      */
     private fun matchesRepresentative(
         photoUri: String,
@@ -429,7 +453,8 @@ class DuplicateScanWorker(
     ): Boolean {
         val hash1 = hashMap[photoUri] ?: return false
         val hash2 = hashMap[representativeUri] ?: return false
-        return ImageHasher.hammingDistance(hash1, hash2) <= ImageHasher.SIMILARITY_THRESHOLD
+        // Use a more relaxed threshold for representative matching to allow group merging
+        return ImageHasher.hammingDistance(hash1, hash2) <= ImageHasher.DHASH_THRESHOLD + 10
     }
 
     /**
