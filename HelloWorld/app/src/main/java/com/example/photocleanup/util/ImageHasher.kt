@@ -124,19 +124,19 @@ object ImageHasher {
     // High-confidence thresholds for geometric tolerance
     // When BOTH color AND structure pass strongly, we can tolerate more hash variance
     // (slight angle/position changes cause hash differences even in clearly related photos)
-    private const val HIGH_CONFIDENCE_COLOR = 0.70    // Strong color match threshold
-    private const val HIGH_CONFIDENCE_EDGE = 6        // Strong structure match threshold
-    private const val DHASH_BOOST = 4                 // Extra dHash tolerance for high-confidence pairs
-    private const val PHASH_BOOST = 4                 // Extra pHash tolerance for high-confidence pairs
+    private const val HIGH_CONFIDENCE_COLOR = 0.68    // Strong color match threshold
+    private const val HIGH_CONFIDENCE_EDGE = 8        // Strong structure match threshold
+    private const val DHASH_BOOST = 6                 // Extra dHash tolerance for high-confidence pairs
+    private const val PHASH_BOOST = 6                 // Extra pHash tolerance for high-confidence pairs
 
     // Temporal proximity boost - photos taken very close in time are likely related
     // even with significant hash differences (burst shots, slight movement between shots)
-    private const val TEMPORAL_CLOSE_SECONDS = 90L    // Photos within 90 seconds = close
-    private const val TEMPORAL_BURST_SECONDS = 45L    // Photos within 45 seconds = likely burst
-    private const val TEMPORAL_RAPID_SECONDS = 20L    // Photos within 20 seconds = rapid burst (very likely same scene)
-    private const val TEMPORAL_CLOSE_BOOST = 6        // Extra tolerance for temporally close photos
-    private const val TEMPORAL_BURST_BOOST = 11       // Extra tolerance for likely burst shots
-    private const val TEMPORAL_RAPID_BOOST = 16       // Very aggressive tolerance for rapid bursts
+    private const val TEMPORAL_CLOSE_SECONDS = 120L   // Photos within 2 minutes = close
+    private const val TEMPORAL_BURST_SECONDS = 60L    // Photos within 1 minute = likely burst
+    private const val TEMPORAL_RAPID_SECONDS = 30L    // Photos within 30 seconds = rapid burst (very likely same scene)
+    private const val TEMPORAL_CLOSE_BOOST = 8        // Extra tolerance for temporally close photos
+    private const val TEMPORAL_BURST_BOOST = 14       // Extra tolerance for likely burst shots
+    private const val TEMPORAL_RAPID_BOOST = 20       // Very aggressive tolerance for rapid bursts
 
     // For rapid bursts, also relax entry thresholds (color/structure)
     // since temporal proximity is strong evidence of relationship
@@ -146,8 +146,8 @@ object ImageHasher {
     // Color similarity tiers - higher color match = more confidence = more boost allowed
     // True duplicates (same scene) have very high color similarity (0.85+)
     // False positives (different subjects, similar clothes) have moderate similarity (0.60-0.75)
-    private const val COLOR_VERY_HIGH = 0.75      // Same scene, same lighting - full temporal boost
-    private const val COLOR_HIGH = 0.68           // Likely same scene - partial temporal boost
+    private const val COLOR_VERY_HIGH = 0.72      // Same scene, same lighting - full temporal boost
+    private const val COLOR_HIGH = 0.65           // Likely same scene - partial temporal boost
     // Below COLOR_HIGH: minimal temporal boost to avoid false positives
 
     // Adaptive two-stage thresholds (RESTORED to strict values)
