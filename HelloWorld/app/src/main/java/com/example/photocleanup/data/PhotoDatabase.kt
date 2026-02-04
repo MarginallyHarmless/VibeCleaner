@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ReviewedPhoto::class, PhotoHash::class, DuplicateGroup::class],
-    version = 4,
+    version = 6,
     exportSchema = false
 )
 abstract class PhotoDatabase : RoomDatabase() {
@@ -80,6 +80,29 @@ abstract class PhotoDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration from version 4 to 5.
+         * Adds colorHistogram column for color pre-filtering to reduce false positives.
+         * Photos with different color distributions are quickly rejected before hash comparison.
+         */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE photo_hashes ADD COLUMN colorHistogram TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        /**
+         * Migration from version 5 to 6.
+         * Adds edgeHash column for Sobel-based edge detection hash.
+         * Edge hash captures structural patterns and is brightness-invariant, allowing
+         * detection of duplicates with different lighting/exposure that fail color matching.
+         */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE photo_hashes ADD COLUMN edgeHash INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getDatabase(context: Context): PhotoDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -87,7 +110,7 @@ abstract class PhotoDatabase : RoomDatabase() {
                     PhotoDatabase::class.java,
                     "photo_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
                 INSTANCE = instance
                 instance

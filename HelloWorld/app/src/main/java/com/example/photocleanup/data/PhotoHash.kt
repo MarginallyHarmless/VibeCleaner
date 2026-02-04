@@ -23,6 +23,8 @@ data class PhotoHash(
     val uri: String,              // Content URI of the photo
     val hash: Long,               // 64-bit dHash value (fast first-pass)
     val pHash: Long = 0,          // 64-bit pHash value (DCT-based, for confirmation)
+    val edgeHash: Long = 0,       // 64-bit Sobel edge hash (brightness-invariant structure)
+    val colorHistogram: String = "", // Base64-encoded RGB histogram for color pre-filter
     val fileSize: Long,           // File size in bytes
     val width: Int,               // Image width in pixels (effective, after EXIF rotation)
     val height: Int,              // Image height in pixels (effective, after EXIF rotation)

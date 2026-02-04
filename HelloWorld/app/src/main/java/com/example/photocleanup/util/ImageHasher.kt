@@ -12,8 +12,10 @@ import coil.request.SuccessResult
 import coil.size.Size
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.util.Base64
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
@@ -111,12 +113,42 @@ object ImageHasher {
     private const val PHASH_SIZE = 32   // Resize to 32x32 for DCT
     private const val PHASH_SMALL = 8   // Extract 8x8 low-frequency coefficients
 
-    // Adaptive two-stage thresholds
+    // Color histogram constants
+    private const val HISTOGRAM_BINS = 8  // 8 bins per RGB channel = 512 total bins
+    const val COLOR_HISTOGRAM_THRESHOLD = 0.60  // Minimum color similarity (0-1) to proceed
+
+    // Edge hash constants (Sobel-based structure detection)
+    const val EDGE_HASH_THRESHOLD = 8           // Max Hamming distance for structure match (alternative to color path)
+    const val PHASH_THRESHOLD_STRICT = 6        // Stricter pHash when using structure path only
+
+    // High-confidence thresholds for geometric tolerance
+    // When BOTH color AND structure pass strongly, we can tolerate more hash variance
+    // (slight angle/position changes cause hash differences even in clearly related photos)
+    private const val HIGH_CONFIDENCE_COLOR = 0.70    // Strong color match threshold
+    private const val HIGH_CONFIDENCE_EDGE = 6        // Strong structure match threshold
+    private const val DHASH_BOOST = 4                 // Extra dHash tolerance for high-confidence pairs
+    private const val PHASH_BOOST = 4                 // Extra pHash tolerance for high-confidence pairs
+
+    // Temporal proximity boost - photos taken very close in time are likely related
+    // even with significant hash differences (burst shots, slight movement between shots)
+    private const val TEMPORAL_CLOSE_SECONDS = 60L    // Photos within 60 seconds = close
+    private const val TEMPORAL_BURST_SECONDS = 10L    // Photos within 10 seconds = likely burst
+    private const val TEMPORAL_RAPID_SECONDS = 5L     // Photos within 5 seconds = rapid burst (very likely same scene)
+    private const val TEMPORAL_CLOSE_BOOST = 4        // Extra tolerance for temporally close photos
+    private const val TEMPORAL_BURST_BOOST = 7        // Extra tolerance for likely burst shots
+    private const val TEMPORAL_RAPID_BOOST = 10       // Very aggressive tolerance for rapid bursts
+
+    // For rapid bursts, also relax entry thresholds (color/structure)
+    // since temporal proximity is strong evidence of relationship
+    private const val TEMPORAL_RAPID_COLOR_THRESHOLD = 0.45   // Lower color requirement for rapid bursts
+    private const val TEMPORAL_RAPID_EDGE_THRESHOLD = 12      // Higher edge tolerance for rapid bursts
+
+    // Adaptive two-stage thresholds (RESTORED to strict values)
     // If dHash ≤ DHASH_CERTAIN: definitely duplicates, skip pHash (fast path for burst shots)
     // If dHash ≤ DHASH_THRESHOLD: possible duplicates, verify with pHash
-    const val DHASH_CERTAIN = 6         // Very similar - trust dHash alone (burst shots: 0-5)
-    const val DHASH_THRESHOLD = 12      // Permissive first pass (catches burst shots with dist 11-12)
-    const val PHASH_THRESHOLD = 10      // Confirmation threshold (slightly relaxed)
+    const val DHASH_CERTAIN = 5         // RESTORED from 8 - stricter for certain matches
+    const val DHASH_THRESHOLD = 12      // RESTORED from 16 - stricter candidate selection
+    const val PHASH_THRESHOLD = 10      // RESTORED from 14 - stricter confirmation
 
     // Legacy threshold for backward compatibility
     const val SIMILARITY_THRESHOLD = DHASH_THRESHOLD
@@ -368,6 +400,323 @@ object ImageHasher {
     }
 
     /**
+     * Compute pHash AND color histogram from the same 32x32 bitmap.
+     * This is more efficient than loading the image twice.
+     *
+     * Color histogram: 8 bins per R/G/B channel (512 bins total).
+     * The histogram captures color distribution which is very different between
+     * photos of different scenes (blue sky vs orange sunset vs dark interior).
+     *
+     * @param context Android context for image loading
+     * @param imageUri Content URI of the image
+     * @param imageLoader Optional Coil ImageLoader instance
+     * @return Triple of (pHash, colorHistogram, bitmap) or null if loading failed
+     * @deprecated Use computeAllHashes instead which also computes edge hash
+     */
+    suspend fun computePHashAndHistogram(
+        context: Context,
+        imageUri: Uri,
+        imageLoader: ImageLoader? = null
+    ): Triple<Long, IntArray, Bitmap?>? = withContext(Dispatchers.IO) {
+        val result = computeAllHashes(context, imageUri, imageLoader) ?: return@withContext null
+        Triple(result.first, result.third, null)
+    }
+
+    /**
+     * Data class to hold all computed hashes from a single bitmap load.
+     */
+    data class AllHashes(
+        val pHash: Long,
+        val edgeHash: Long,
+        val colorHistogram: IntArray
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+            other as AllHashes
+            return pHash == other.pHash && edgeHash == other.edgeHash && colorHistogram.contentEquals(other.colorHistogram)
+        }
+        override fun hashCode(): Int = 31 * (31 * pHash.hashCode() + edgeHash.hashCode()) + colorHistogram.contentHashCode()
+    }
+
+    /**
+     * Compute pHash, edge hash, AND color histogram from the same 32x32 bitmap.
+     * This is more efficient than loading the image multiple times.
+     *
+     * - pHash: DCT-based perceptual hash for overall image structure
+     * - edgeHash: Sobel-based edge hash for brightness-invariant structure matching
+     * - colorHistogram: RGB histogram for color distribution pre-filtering
+     *
+     * The edge hash allows detecting duplicates with different exposure/lighting
+     * that fail the color histogram check (e.g., same scene sunny vs overcast).
+     *
+     * @param context Android context for image loading
+     * @param imageUri Content URI of the image
+     * @param imageLoader Optional Coil ImageLoader instance
+     * @return Triple of (pHash, edgeHash, colorHistogram) or null if loading failed
+     */
+    suspend fun computeAllHashes(
+        context: Context,
+        imageUri: Uri,
+        imageLoader: ImageLoader? = null
+    ): Triple<Long, Long, IntArray>? = withContext(Dispatchers.IO) {
+        try {
+            val loader = imageLoader ?: ImageLoader.Builder(context)
+                .crossfade(false)
+                .build()
+
+            // Load and resize image to 32x32 pixels
+            val request = ImageRequest.Builder(context)
+                .data(imageUri)
+                .size(coil.size.Size(PHASH_SIZE, PHASH_SIZE))
+                .allowHardware(false)
+                .build()
+
+            val result = loader.execute(request)
+            if (result !is SuccessResult) {
+                return@withContext null
+            }
+
+            val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
+                ?: return@withContext null
+
+            val scaledBitmap = if (bitmap.width != PHASH_SIZE || bitmap.height != PHASH_SIZE) {
+                Bitmap.createScaledBitmap(bitmap, PHASH_SIZE, PHASH_SIZE, true)
+            } else {
+                bitmap
+            }
+
+            try {
+                // Compute pHash (DCT-based)
+                val pHash = computePHashFromBitmap(scaledBitmap)
+
+                // Compute edge hash (Sobel-based, brightness-invariant)
+                val edgeHash = computeEdgeHashFromBitmap(scaledBitmap)
+
+                // Compute color histogram from same bitmap
+                val histogram = computeColorHistogramFromBitmap(scaledBitmap)
+
+                Triple(pHash, edgeHash, histogram)
+            } finally {
+                if (scaledBitmap != bitmap) {
+                    scaledBitmap.recycle()
+                }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Compute color histogram from a bitmap.
+     * Uses 8 bins per RGB channel (512 total bins).
+     */
+    private fun computeColorHistogramFromBitmap(bitmap: Bitmap): IntArray {
+        val totalBins = HISTOGRAM_BINS * HISTOGRAM_BINS * HISTOGRAM_BINS
+        val histogram = IntArray(totalBins)
+
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                val pixel = bitmap.getPixel(x, y)
+                val r = Color.red(pixel)
+                val g = Color.green(pixel)
+                val b = Color.blue(pixel)
+
+                // Map 0-255 to 0-7 bins
+                val rBin = (r * HISTOGRAM_BINS) / 256
+                val gBin = (g * HISTOGRAM_BINS) / 256
+                val bBin = (b * HISTOGRAM_BINS) / 256
+
+                // 3D index: r * 64 + g * 8 + b
+                val index = rBin * HISTOGRAM_BINS * HISTOGRAM_BINS + gBin * HISTOGRAM_BINS + bBin
+                histogram[index]++
+            }
+        }
+
+        return histogram
+    }
+
+    /**
+     * Compute edge magnitudes using Sobel edge detection.
+     *
+     * Sobel operators detect edges by computing horizontal and vertical gradients:
+     * - Gx (horizontal): [-1 0 1; -2 0 2; -1 0 1]
+     * - Gy (vertical):   [-1 -2 -1; 0 0 0; 1 2 1]
+     *
+     * Edge magnitude = sqrt(Gx² + Gy²)
+     *
+     * @param bitmap Grayscale input bitmap
+     * @return 2D array of edge magnitudes (size - 2 in each dimension due to borders)
+     */
+    private fun computeEdgeMagnitudes(bitmap: Bitmap): Array<DoubleArray> {
+        val width = bitmap.width
+        val height = bitmap.height
+
+        // Convert bitmap to grayscale array
+        val gray = Array(height) { y ->
+            DoubleArray(width) { x ->
+                toGrayscale(bitmap.getPixel(x, y)).toDouble()
+            }
+        }
+
+        // Output is smaller due to 3x3 kernel borders
+        val outHeight = height - 2
+        val outWidth = width - 2
+        val edges = Array(outHeight) { DoubleArray(outWidth) }
+
+        // Apply Sobel operators
+        for (y in 1 until height - 1) {
+            for (x in 1 until width - 1) {
+                // Horizontal gradient (Gx)
+                val gx = (-1 * gray[y-1][x-1] + 1 * gray[y-1][x+1] +
+                         -2 * gray[y][x-1]   + 2 * gray[y][x+1] +
+                         -1 * gray[y+1][x-1] + 1 * gray[y+1][x+1])
+
+                // Vertical gradient (Gy)
+                val gy = (-1 * gray[y-1][x-1] - 2 * gray[y-1][x] - 1 * gray[y-1][x+1] +
+                          1 * gray[y+1][x-1] + 2 * gray[y+1][x] + 1 * gray[y+1][x+1])
+
+                // Magnitude
+                edges[y-1][x-1] = sqrt(gx * gx + gy * gy)
+            }
+        }
+
+        return edges
+    }
+
+    /**
+     * Compute 64-bit edge hash from a bitmap using Sobel edge detection.
+     *
+     * This hash captures the structural pattern of the image (edges, contours)
+     * and is invariant to brightness/exposure changes. Same composition with
+     * different lighting will produce similar edge hashes.
+     *
+     * Algorithm:
+     * 1. Apply Sobel edge detection to get edge magnitudes
+     * 2. Divide edge map into 8x8 grid (64 cells)
+     * 3. Compute average edge magnitude per cell
+     * 4. Find median of cell averages
+     * 5. Generate hash: bit = 1 if cell average > median
+     *
+     * @param bitmap Input bitmap (should be 32x32 for consistency with pHash)
+     * @return 64-bit edge hash
+     */
+    private fun computeEdgeHashFromBitmap(bitmap: Bitmap): Long {
+        // Get edge magnitudes (30x30 for 32x32 input due to Sobel borders)
+        val edges = computeEdgeMagnitudes(bitmap)
+        val edgeHeight = edges.size
+        val edgeWidth = if (edgeHeight > 0) edges[0].size else 0
+
+        if (edgeHeight < 8 || edgeWidth < 8) {
+            return 0L // Bitmap too small
+        }
+
+        // Divide into 8x8 grid and compute average per cell
+        val cellHeight = edgeHeight / 8
+        val cellWidth = edgeWidth / 8
+        val cellAverages = DoubleArray(64)
+
+        for (cellY in 0 until 8) {
+            for (cellX in 0 until 8) {
+                var sum = 0.0
+                var count = 0
+
+                val startY = cellY * cellHeight
+                val startX = cellX * cellWidth
+                val endY = if (cellY == 7) edgeHeight else startY + cellHeight
+                val endX = if (cellX == 7) edgeWidth else startX + cellWidth
+
+                for (y in startY until endY) {
+                    for (x in startX until endX) {
+                        sum += edges[y][x]
+                        count++
+                    }
+                }
+
+                cellAverages[cellY * 8 + cellX] = if (count > 0) sum / count else 0.0
+            }
+        }
+
+        // Find median
+        val sorted = cellAverages.sorted()
+        val median = sorted[sorted.size / 2]
+
+        // Generate hash: bit = 1 if cell > median
+        var hash = 0L
+        for (i in 0 until 64) {
+            if (cellAverages[i] > median) {
+                hash = hash or (1L shl i)
+            }
+        }
+
+        return hash
+    }
+
+    /**
+     * Compare two color histograms using normalized intersection.
+     * This measures the overlap between two color distributions.
+     *
+     * @param h1 First histogram
+     * @param h2 Second histogram
+     * @return Similarity score from 0.0 (completely different) to 1.0 (identical)
+     */
+    fun histogramIntersection(h1: IntArray, h2: IntArray): Double {
+        if (h1.isEmpty() || h2.isEmpty() || h1.size != h2.size) {
+            return 1.0 // Skip filter if histograms invalid
+        }
+
+        var intersection = 0L
+        var sum1 = 0L
+        var sum2 = 0L
+
+        for (i in h1.indices) {
+            intersection += min(h1[i], h2[i])
+            sum1 += h1[i]
+            sum2 += h2[i]
+        }
+
+        // Normalize by the smaller histogram sum (prevents penalizing different exposures)
+        val minSum = min(sum1, sum2)
+        return if (minSum > 0) intersection.toDouble() / minSum else 1.0
+    }
+
+    /**
+     * Encode histogram to Base64 string for database storage.
+     * Uses a compact format: each int as 2 bytes (max count ~1024 for 32x32 image).
+     */
+    fun encodeHistogram(histogram: IntArray): String {
+        if (histogram.isEmpty()) return ""
+
+        val bytes = ByteArray(histogram.size * 2)
+        for (i in histogram.indices) {
+            val value = histogram[i].coerceIn(0, 65535)
+            bytes[i * 2] = (value shr 8).toByte()
+            bytes[i * 2 + 1] = (value and 0xFF).toByte()
+        }
+        return Base64.encodeToString(bytes, Base64.NO_WRAP)
+    }
+
+    /**
+     * Decode histogram from Base64 string.
+     */
+    fun decodeHistogram(encoded: String): IntArray {
+        if (encoded.isEmpty()) return IntArray(0)
+
+        return try {
+            val bytes = Base64.decode(encoded, Base64.NO_WRAP)
+            val histogram = IntArray(bytes.size / 2)
+            for (i in histogram.indices) {
+                val high = (bytes[i * 2].toInt() and 0xFF) shl 8
+                val low = bytes[i * 2 + 1].toInt() and 0xFF
+                histogram[i] = high or low
+            }
+            histogram
+        } catch (e: Exception) {
+            IntArray(0)
+        }
+    }
+
+    /**
      * Compute the Hamming distance between two hashes.
      * The Hamming distance is the number of bit positions where the hashes differ.
      *
@@ -430,45 +779,111 @@ object ImageHasher {
 
     /**
      * Data class containing photo metadata for enhanced duplicate comparison.
-     * Includes dimensions, file size, and both hash types for two-stage verification.
+     * Includes dimensions, file size, color histogram, edge hash, and both hash types for multi-stage verification.
      */
     data class PhotoMetadata(
         val uri: String,
-        val hash: Long,         // dHash for fast first-pass
-        val pHash: Long,        // pHash for strict confirmation
+        val hash: Long,              // dHash for fast first-pass
+        val pHash: Long,             // pHash for strict confirmation
+        val edgeHash: Long,          // Sobel edge hash for brightness-invariant structure matching
+        val colorHistogram: IntArray, // RGB color histogram for pre-filtering
         val width: Int,
         val height: Int,
-        val fileSize: Long
+        val fileSize: Long,
+        val dateAdded: Long = 0      // Timestamp in seconds for time-window clustering
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+            other as PhotoMetadata
+            return uri == other.uri
+        }
+
+        override fun hashCode(): Int = uri.hashCode()
+    }
+
+    /**
+     * Configuration for burst/time-window based duplicate detection.
+     *
+     * Time-window clustering dramatically improves performance by only comparing
+     * photos taken within a short time window of each other. This is based on the
+     * observation that burst shots and near-duplicates typically happen within
+     * seconds or minutes of each other.
+     *
+     * Thresholds are now strict because the color histogram pre-filter provides
+     * additional validation - different colored photos are rejected before hash comparison.
+     *
+     * DUAL-PATH ENTRY: Photos can enter comparison via either:
+     * 1. Color path: colorSim >= colorThreshold (0.60) - similar colors
+     * 2. Structure path: edgeDist <= edgeHashThreshold (8) - same structural pattern
+     *
+     * This allows detecting duplicates with different exposure/lighting that fail
+     * color matching but have identical structural patterns.
+     */
+    data class BurstDetectionConfig(
+        val windowSizeSeconds: Long = 300,      // 5 minutes
+        val windowStepSeconds: Long = 150,      // 2.5 min overlap (catches boundary cases)
+        val dHashCertain: Int = 5,              // RESTORED from 8 - strict for certain matches
+        val dHashThreshold: Int = 12,           // RESTORED from 16 - strict candidate selection
+        val pHashThreshold: Int = 10,           // RESTORED from 14 - strict confirmation
+        val pHashThresholdStrict: Int = 6,      // Stricter pHash when using structure path only
+        val fileSizeTolerance: Float = 2.0f,    // RESTORED from 3.0 - strict size filter
+        val colorThreshold: Double = 0.60,      // Minimum color similarity for color path
+        val edgeHashThreshold: Int = 8          // Max edge hash distance for structure path
     )
 
     /**
-     * Find similar photo pairs using adaptive two-stage hash verification.
+     * Find similar photo pairs using adaptive multi-stage verification with dual-path entry.
      *
-     * This uses an adaptive approach to balance speed, recall, and precision:
+     * This uses a multi-layer filtering approach for speed and precision:
+     *
+     * ## DUAL-PATH ENTRY (NEW)
+     * Photos can proceed to hash comparison via EITHER path:
+     * - **Color path**: colorSim >= colorThreshold (0.60) - similar color distributions
+     * - **Structure path**: edgeDist <= edgeHashThreshold (8) - same structural pattern
+     *
+     * This solves the false negative problem where legitimate duplicates with different
+     * exposure/lighting fail color matching. Edge patterns are brightness-invariant:
+     * same scene sunny vs overcast will have the same edges but different colors.
+     *
+     * When using structure path only (color failed), pHash threshold is stricter (6 vs 10)
+     * to compensate for reduced confidence.
+     *
+     * ## FILTER LAYERS
+     * 0. Dual-path entry: Either color OR structure match
      * 1. Aspect ratio filter: Reject different aspect ratios
      * 2. File size filter: Reject vastly different file sizes
      * 3. dHash check with adaptive pHash:
-     *    - dHash ≤ 6: MATCH immediately (very similar, definitely duplicates - burst shots)
-     *    - dHash 7-12: Verify with pHash (questionable, need confirmation)
+     *    - dHash ≤ 5: MATCH immediately (very similar, definitely duplicates - burst shots)
+     *    - dHash 6-12: Verify with pHash (threshold depends on entry path)
      *    - dHash > 12: REJECT (too different)
      *
-     * This catches burst shots (which have low dHash but may have high pHash due to
-     * slight camera shake) while still filtering false positives for marginal matches.
-     *
-     * @param photos List of PhotoMetadata containing both dHash and pHash
+     * @param photos List of PhotoMetadata containing hashes, edge hash, and histogram
      * @param dHashCertain dHash threshold for certain matches (skip pHash)
      * @param dHashThreshold Maximum dHash for candidate selection
-     * @param pHashThreshold pHash threshold for confirming questionable matches
+     * @param pHashThreshold pHash threshold for color-path matches
+     * @param fileSizeTolerance Maximum ratio between file sizes
+     * @param colorThreshold Minimum color histogram similarity for color path
+     * @param edgeHashThreshold Maximum edge hash distance for structure path
+     * @param pHashThresholdStrict Stricter pHash threshold for structure-only path
      * @return List of pairs of URIs that are similar
      */
     fun findSimilarPairsEnhanced(
         photos: List<PhotoMetadata>,
         dHashCertain: Int = DHASH_CERTAIN,
         dHashThreshold: Int = DHASH_THRESHOLD,
-        pHashThreshold: Int = PHASH_THRESHOLD
+        pHashThreshold: Int = PHASH_THRESHOLD,
+        fileSizeTolerance: Float = FILE_SIZE_TOLERANCE,
+        colorThreshold: Double = COLOR_HISTOGRAM_THRESHOLD,
+        edgeHashThreshold: Int = EDGE_HASH_THRESHOLD,
+        pHashThresholdStrict: Int = PHASH_THRESHOLD_STRICT
     ): List<Pair<String, String>> {
         val similar = mutableListOf<Pair<String, String>>()
         var checkedPairs = 0
+        var passedColorPath = 0
+        var passedStructurePath = 0
+        var passedBothPaths = 0
+        var rejectedBothPaths = 0
         var passedAspectRatio = 0
         var passedFileSize = 0
         var matchedByDHashAlone = 0
@@ -476,13 +891,57 @@ object ImageHasher {
         var rejectedByPHash = 0
         var matchedWithPHash = 0
 
-        logDebug("Starting adaptive comparison of ${photos.size} photos (dHash≤$dHashCertain=certain, dHash≤$dHashThreshold+pHash≤$pHashThreshold=verify)")
+        logDebug("Starting multi-stage comparison of ${photos.size} photos")
+        logDebug("  Thresholds: color≥$colorThreshold, edge≤$edgeHashThreshold, dHash≤$dHashCertain=certain, dHash≤$dHashThreshold+pHash≤$pHashThreshold/$pHashThresholdStrict=verify")
 
         for (i in photos.indices) {
             for (j in i + 1 until photos.size) {
                 checkedPairs++
                 val p1 = photos[i]
                 val p2 = photos[j]
+
+                // TEMPORAL PROXIMITY DETECTION (check first - affects entry thresholds)
+                // Photos taken very close in time are likely related (burst shots, slight
+                // movement between shots). We use this as an additional confidence signal.
+                val timeDiffSeconds = kotlin.math.abs(p1.dateAdded - p2.dateAdded)
+                val isTemporalRapid = timeDiffSeconds <= TEMPORAL_RAPID_SECONDS
+                val isTemporalBurst = timeDiffSeconds <= TEMPORAL_BURST_SECONDS
+                val isTemporalClose = timeDiffSeconds <= TEMPORAL_CLOSE_SECONDS
+
+                // Layer 0: DUAL-PATH ENTRY - Either color match OR structure match
+                // For rapid bursts (≤5 seconds), use relaxed entry thresholds since
+                // temporal proximity is strong evidence of relationship
+                val colorSim = histogramIntersection(p1.colorHistogram, p2.colorHistogram)
+                val edgeDist = hammingDistance(p1.edgeHash, p2.edgeHash)
+
+                val effectiveColorThreshold = if (isTemporalRapid) TEMPORAL_RAPID_COLOR_THRESHOLD else colorThreshold
+                val effectiveEdgeThreshold = if (isTemporalRapid) TEMPORAL_RAPID_EDGE_THRESHOLD else edgeHashThreshold
+
+                val passedColorCheck = colorSim >= effectiveColorThreshold
+                val passedStructureCheck = edgeDist <= effectiveEdgeThreshold
+
+                // Must pass at least one path to continue
+                if (!passedColorCheck && !passedStructureCheck) {
+                    rejectedBothPaths++
+                    if (DEBUG && (colorSim > 0.40 || edgeDist <= 14 || isTemporalClose)) {
+                        val timeInfo = if (isTemporalClose) ", time=${timeDiffSeconds}s" else ""
+                        logDebug("REJECTED (neither path): color=${"%.2f".format(colorSim)}, edge=$edgeDist$timeInfo, ${p1.uri.takeLast(30)} <-> ${p2.uri.takeLast(30)}")
+                    }
+                    continue
+                }
+
+                // Track which path(s) were used
+                when {
+                    passedColorCheck && passedStructureCheck -> passedBothPaths++
+                    passedColorCheck -> passedColorPath++
+                    else -> passedStructurePath++
+                }
+
+                // HIGH-CONFIDENCE DETECTION
+                // When BOTH color AND structure match strongly, we have high confidence
+                // these are related photos (same scene). In this case, we can tolerate
+                // more hash variance to catch slight angle/position changes.
+                val isHighConfidence = colorSim >= HIGH_CONFIDENCE_COLOR && edgeDist <= HIGH_CONFIDENCE_EDGE
 
                 // Layer 1: Aspect ratio pre-filter (fast, O(1))
                 if (!areAspectRatiosCompatible(p1.width, p1.height, p2.width, p2.height)) {
@@ -491,42 +950,80 @@ object ImageHasher {
                 passedAspectRatio++
 
                 // Layer 2: File size pre-filter (fast, O(1))
-                if (!areFileSizesCompatible(p1.fileSize, p2.fileSize)) {
+                if (!areFileSizesCompatible(p1.fileSize, p2.fileSize, fileSizeTolerance)) {
                     continue
                 }
                 passedFileSize++
 
+                // Calculate effective thresholds with boosts:
+                // 1. High-confidence boost: when color + structure both match strongly
+                // 2. Temporal boost: when photos are taken close in time (tiers: rapid/burst/close)
+                // These stack because both are independent confidence signals
+                var thresholdBoost = 0
+                if (isHighConfidence) thresholdBoost += DHASH_BOOST
+                if (isTemporalRapid) thresholdBoost += TEMPORAL_RAPID_BOOST
+                else if (isTemporalBurst) thresholdBoost += TEMPORAL_BURST_BOOST
+                else if (isTemporalClose) thresholdBoost += TEMPORAL_CLOSE_BOOST
+
+                val effectiveDHashCertain = dHashCertain + thresholdBoost
+                val effectiveDHashThreshold = dHashThreshold + thresholdBoost
+
                 // Layer 3: dHash check
                 val dHashDist = hammingDistance(p1.hash, p2.hash)
 
+                // Build boost info string for logging
+                val boostReasons = mutableListOf<String>()
+                if (isHighConfidence) boostReasons.add("high-conf")
+                if (isTemporalRapid) boostReasons.add("rapid≤${timeDiffSeconds}s")
+                else if (isTemporalBurst) boostReasons.add("burst≤${timeDiffSeconds}s")
+                else if (isTemporalClose) boostReasons.add("close≤${timeDiffSeconds}s")
+                val boostInfo = if (boostReasons.isNotEmpty()) " [${boostReasons.joinToString("+")}]" else ""
+
                 // Fast path: very low dHash = definitely duplicates (burst shots, etc.)
-                if (dHashDist <= dHashCertain) {
+                if (dHashDist <= effectiveDHashCertain) {
                     matchedByDHashAlone++
-                    logDebug("MATCH (dHash certain): dHash=$dHashDist, ${p1.uri.takeLast(40)} <-> ${p2.uri.takeLast(40)}")
+                    logDebug("MATCH (dHash certain): dHash=$dHashDist (threshold=$effectiveDHashCertain), color=${"%.2f".format(colorSim)}, edge=$edgeDist$boostInfo, ${p1.uri.takeLast(40)} <-> ${p2.uri.takeLast(40)}")
                     similar.add(Pair(p1.uri, p2.uri))
                     continue
                 }
 
                 // Reject if dHash too high
-                if (dHashDist > dHashThreshold) {
-                    if (dHashDist <= 20) {
-                        logDebug("NEAR-MISS dHash: dist=$dHashDist (threshold=$dHashThreshold), ${p1.uri.takeLast(40)} <-> ${p2.uri.takeLast(40)}")
+                if (dHashDist > effectiveDHashThreshold) {
+                    if (dHashDist <= 24) {
+                        logDebug("NEAR-MISS dHash: dist=$dHashDist (threshold=$effectiveDHashThreshold), color=${"%.2f".format(colorSim)}, edge=$edgeDist$boostInfo, ${p1.uri.takeLast(40)} <-> ${p2.uri.takeLast(40)}")
                     }
                     continue
                 }
                 passedDHash++
 
-                // Layer 4: pHash confirmation for questionable matches (dHash 7-12)
+                // Layer 4: pHash confirmation for questionable matches
+                // Threshold depends on entry path AND confidence level:
+                // - Temporal/high confidence: boosted threshold (tolerates geometric variance)
+                // - Structure-only path: stricter threshold (less certainty)
+                // - Color path: normal threshold
+                var pHashBoost = 0
+                if (isHighConfidence) pHashBoost += PHASH_BOOST
+                if (isTemporalRapid) pHashBoost += TEMPORAL_RAPID_BOOST
+                else if (isTemporalBurst) pHashBoost += TEMPORAL_BURST_BOOST
+                else if (isTemporalClose) pHashBoost += TEMPORAL_CLOSE_BOOST
+
+                val effectivePHashThreshold = when {
+                    pHashBoost > 0 -> pHashThreshold + pHashBoost  // Boosted: relaxed
+                    passedStructureCheck && !passedColorCheck -> pHashThresholdStrict  // Structure-only: strict
+                    else -> pHashThreshold  // Normal
+                }
+
                 val pHashDist = hammingDistance(p1.pHash, p2.pHash)
-                if (pHashDist > pHashThreshold) {
+                if (pHashDist > effectivePHashThreshold) {
                     rejectedByPHash++
-                    logDebug("REJECTED by pHash: dHash=$dHashDist, pHash=$pHashDist, ${p1.uri.takeLast(40)} <-> ${p2.uri.takeLast(40)}")
+                    logDebug("REJECTED by pHash: dHash=$dHashDist, pHash=$pHashDist (threshold=$effectivePHashThreshold), color=${"%.2f".format(colorSim)}, edge=$edgeDist$boostInfo, ${p1.uri.takeLast(40)} <-> ${p2.uri.takeLast(40)}")
                     continue
                 }
 
-                // Both stages passed - confirmed duplicate
+                // All stages passed - confirmed duplicate
                 matchedWithPHash++
-                logDebug("MATCH (pHash verified): dHash=$dHashDist, pHash=$pHashDist, ${p1.uri.takeLast(40)} <-> ${p2.uri.takeLast(40)}")
+                val pathInfo = if (passedColorCheck && passedStructureCheck) "both" else if (passedColorCheck) "color" else "structure"
+                logDebug("MATCH (pHash verified): dHash=$dHashDist, pHash=$pHashDist, color=${"%.2f".format(colorSim)}, edge=$edgeDist, path=$pathInfo$boostInfo, ${p1.uri.takeLast(40)} <-> ${p2.uri.takeLast(40)}")
                 similar.add(Pair(p1.uri, p2.uri))
             }
 
@@ -537,9 +1034,11 @@ object ImageHasher {
         }
 
         val totalMatched = matchedByDHashAlone + matchedWithPHash
-        logDebug("Summary: checked=$checkedPairs, passedAR=$passedAspectRatio, passedSize=$passedFileSize")
+        val totalPassed = passedColorPath + passedStructurePath + passedBothPaths
+        logDebug("Summary: checked=$checkedPairs, passedDualPath=$totalPassed (color=$passedColorPath, structure=$passedStructurePath, both=$passedBothPaths), rejectedBoth=$rejectedBothPaths")
+        logDebug("  After filters: passedAR=$passedAspectRatio, passedSize=$passedFileSize, passedDHash=$passedDHash")
         logDebug("  Matches: $totalMatched total ($matchedByDHashAlone by dHash alone, $matchedWithPHash verified by pHash)")
-        logDebug("  Filtered: passedDHash=$passedDHash, rejectedByPHash=$rejectedByPHash")
+        logDebug("  Filtered: rejectedByPHash=$rejectedByPHash")
         return similar
     }
 
@@ -566,14 +1065,108 @@ object ImageHasher {
      * Check if two images have compatible file sizes.
      * A 138KB meme shouldn't match a 9.6MB camera photo.
      *
+     * @param s1 File size of first image
+     * @param s2 File size of second image
+     * @param tolerance Maximum ratio between file sizes (default: FILE_SIZE_TOLERANCE)
      * @return true if file sizes are within tolerance
      */
-    private fun areFileSizesCompatible(s1: Long, s2: Long): Boolean {
+    private fun areFileSizesCompatible(s1: Long, s2: Long, tolerance: Float = FILE_SIZE_TOLERANCE): Boolean {
         // Skip filter if sizes are invalid or zero
         if (s1 <= 0 || s2 <= 0) return true
 
-        // Check if sizes are within 10x of each other
+        // Check if sizes are within tolerance factor of each other
         val factor = if (s1 > s2) s1.toDouble() / s2 else s2.toDouble() / s1
-        return factor <= FILE_SIZE_TOLERANCE
+        return factor <= tolerance
+    }
+
+    /**
+     * Find similar photo pairs using time-window clustering for efficient burst detection.
+     *
+     * This algorithm dramatically improves performance by only comparing photos taken
+     * within a short time window of each other. The key insight is:
+     * - Burst shots and near-duplicates happen within seconds/minutes
+     * - Comparing only temporally close photos reduces O(n²) to O(sum of window²)
+     * - For 10,000 photos in ~100 windows of ~100 photos: ~500K comparisons vs ~50M
+     *
+     * Within time windows, thresholds are relaxed because temporal proximity provides
+     * high confidence that similar-looking photos are genuinely related (burst shots,
+     * HDR captures, slight movement between shots).
+     *
+     * Overlapping windows (50% overlap by default) ensure photos at window boundaries
+     * are compared with neighbors on both sides.
+     *
+     * @param photos List of PhotoMetadata with dateAdded timestamps
+     * @param config Configuration for window size, overlap, and thresholds
+     * @return List of pairs of URIs that are similar within time windows
+     */
+    fun findSimilarPairsWithTimeWindows(
+        photos: List<PhotoMetadata>,
+        config: BurstDetectionConfig = BurstDetectionConfig()
+    ): List<Pair<String, String>> {
+        if (photos.size < 2) return emptyList()
+
+        // Sort by timestamp for windowing
+        val sortedPhotos = photos.sortedBy { it.dateAdded }
+        val minTime = sortedPhotos.first().dateAdded
+        val maxTime = sortedPhotos.last().dateAdded
+
+        // Use Set to deduplicate pairs found in overlapping windows
+        val foundPairs = mutableSetOf<Pair<String, String>>()
+        var windowCount = 0
+        var totalWindowComparisons = 0
+
+        logDebug("Time-window scan: ${sortedPhotos.size} photos, time range ${maxTime - minTime}s")
+        logDebug("Config: window=${config.windowSizeSeconds}s, step=${config.windowStepSeconds}s")
+        logDebug("Thresholds: dHashCertain=${config.dHashCertain}, dHashThreshold=${config.dHashThreshold}, pHashThreshold=${config.pHashThreshold}")
+
+        var windowStart = minTime
+        while (windowStart <= maxTime) {
+            val windowEnd = windowStart + config.windowSizeSeconds
+
+            // Get photos within this time window
+            val windowPhotos = sortedPhotos.filter {
+                it.dateAdded >= windowStart && it.dateAdded < windowEnd
+            }
+
+            if (windowPhotos.size >= 2) {
+                windowCount++
+                val windowPairCount = (windowPhotos.size * (windowPhotos.size - 1)) / 2
+                totalWindowComparisons += windowPairCount
+
+                // Find duplicates within window using configured thresholds
+                val windowPairs = findSimilarPairsEnhanced(
+                    windowPhotos,
+                    config.dHashCertain,
+                    config.dHashThreshold,
+                    config.pHashThreshold,
+                    config.fileSizeTolerance,
+                    config.colorThreshold,
+                    config.edgeHashThreshold,
+                    config.pHashThresholdStrict
+                )
+
+                // Normalize pair ordering for deduplication (smaller URI first)
+                windowPairs.forEach { (uri1, uri2) ->
+                    val normalized = if (uri1 < uri2) Pair(uri1, uri2) else Pair(uri2, uri1)
+                    foundPairs.add(normalized)
+                }
+
+                if (windowPairs.isNotEmpty()) {
+                    logDebug("Window $windowCount (${windowPhotos.size} photos): found ${windowPairs.size} pairs")
+                }
+            }
+
+            windowStart += config.windowStepSeconds
+        }
+
+        val globalComparisons = (sortedPhotos.size.toLong() * (sortedPhotos.size - 1)) / 2
+        val savings = if (globalComparisons > 0) {
+            ((globalComparisons - totalWindowComparisons) * 100) / globalComparisons
+        } else 0
+
+        logDebug("Time-window summary: $windowCount windows, $totalWindowComparisons comparisons (vs $globalComparisons global, ${savings}% reduction)")
+        logDebug("Found ${foundPairs.size} unique duplicate pairs")
+
+        return foundPairs.toList()
     }
 }

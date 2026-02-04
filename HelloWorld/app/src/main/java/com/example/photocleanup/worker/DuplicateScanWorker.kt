@@ -49,7 +49,9 @@ class DuplicateScanWorker(
         // Algorithm version - increment this when changing hash algorithm or parameters
         // Old hashes with different version will be recomputed
         // Version 3: Added pHash (perceptual hash using DCT) for two-stage duplicate detection
-        const val CURRENT_ALGORITHM_VERSION = 3
+        // Version 4: Added color histogram pre-filter and restored strict thresholds
+        // Version 5: Added edge hash for brightness-invariant structure matching (dual-path entry)
+        const val CURRENT_ALGORITHM_VERSION = 5
 
         // Progress data keys
         const val KEY_PROGRESS = "progress"
@@ -138,24 +140,29 @@ class DuplicateScanWorker(
                     }
                 }
 
-                // Compute both dHash and pHash for new photo
+                // Compute dHash
                 val dHash = ImageHasher.computeHash(
                     applicationContext,
                     Uri.parse(photo.uri),
                     imageLoader
                 )
-                val pHash = ImageHasher.computePHash(
+
+                // Compute pHash, edge hash, AND color histogram together (shares bitmap loading)
+                val allHashes = ImageHasher.computeAllHashes(
                     applicationContext,
                     Uri.parse(photo.uri),
                     imageLoader
                 )
 
-                if (dHash != null && pHash != null) {
-                    Log.d(TAG, "Hashes computed: ${photo.uri.takeLast(20)} -> dHash=$dHash, pHash=$pHash")
+                if (dHash != null && allHashes != null) {
+                    val (pHash, edgeHash, colorHistogram) = allHashes
+                    Log.d(TAG, "Hashes computed: ${photo.uri.takeLast(20)} -> dHash=$dHash, pHash=$pHash, edgeHash=$edgeHash, histogram=${colorHistogram.size} bins")
                     val photoHash = PhotoHash(
                         uri = photo.uri,
                         hash = dHash,
                         pHash = pHash,
+                        edgeHash = edgeHash,
+                        colorHistogram = ImageHasher.encodeHistogram(colorHistogram),
                         fileSize = photo.size,
                         width = photo.width,
                         height = photo.height,
@@ -174,7 +181,7 @@ class DuplicateScanWorker(
                         batchToSave.clear()
                     }
                 } else {
-                    Log.w(TAG, "Hash computation FAILED for: ${photo.uri} (dHash=${dHash != null}, pHash=${pHash != null})")
+                    Log.w(TAG, "Hash computation FAILED for: ${photo.uri} (dHash=${dHash != null}, allHashes=${allHashes != null})")
                 }
 
                 // Update progress (hashing is 0-95%, comparison is quick so we reserve 95-100%)
@@ -212,19 +219,24 @@ class DuplicateScanWorker(
             // Clear old duplicate groups before new scan
             duplicateGroupDao.deleteAll()
 
-            // Convert to PhotoMetadata for enhanced two-stage comparison
+            // Convert to PhotoMetadata for enhanced multi-stage comparison
             val photoMetadata = hashes.map { hash ->
                 ImageHasher.PhotoMetadata(
                     uri = hash.uri,
                     hash = hash.hash,
                     pHash = hash.pHash,
+                    edgeHash = hash.edgeHash,
+                    colorHistogram = ImageHasher.decodeHistogram(hash.colorHistogram),
                     width = hash.width,
                     height = hash.height,
-                    fileSize = hash.fileSize
+                    fileSize = hash.fileSize,
+                    dateAdded = hash.dateAdded  // Include timestamp for time-window clustering
                 )
             }
-            // Two-stage duplicate detection: dHash (permissive) + pHash (strict confirmation)
-            val similarPairs = ImageHasher.findSimilarPairsEnhanced(photoMetadata)
+            // Time-window clustering for efficient burst detection
+            // Only compares photos within 5-minute windows, with relaxed thresholds
+            // This reduces comparisons from O(n²) to O(sum of window²) - typically 50-100x faster
+            val similarPairs = ImageHasher.findSimilarPairsWithTimeWindows(photoMetadata)
 
             // Step 4: Group similar photos using Union-Find
             val groups = groupDuplicates(similarPairs, hashes)
@@ -237,7 +249,6 @@ class DuplicateScanWorker(
                 if (uris.size < 2) continue // Not a duplicate group
 
                 val duplicateEntries = uris.mapIndexed { index, uri ->
-                    val photoHash = hashes.find { it.uri == uri }
                     DuplicateGroup(
                         groupId = groupId,
                         photoUri = uri,
