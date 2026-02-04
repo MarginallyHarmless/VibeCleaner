@@ -131,12 +131,12 @@ object ImageHasher {
 
     // Temporal proximity boost - photos taken very close in time are likely related
     // even with significant hash differences (burst shots, slight movement between shots)
-    private const val TEMPORAL_CLOSE_SECONDS = 60L    // Photos within 60 seconds = close
-    private const val TEMPORAL_BURST_SECONDS = 10L    // Photos within 10 seconds = likely burst
-    private const val TEMPORAL_RAPID_SECONDS = 5L     // Photos within 5 seconds = rapid burst (very likely same scene)
-    private const val TEMPORAL_CLOSE_BOOST = 5        // Extra tolerance for temporally close photos
-    private const val TEMPORAL_BURST_BOOST = 9        // Extra tolerance for likely burst shots
-    private const val TEMPORAL_RAPID_BOOST = 13       // Very aggressive tolerance for rapid bursts
+    private const val TEMPORAL_CLOSE_SECONDS = 90L    // Photos within 90 seconds = close
+    private const val TEMPORAL_BURST_SECONDS = 45L    // Photos within 45 seconds = likely burst
+    private const val TEMPORAL_RAPID_SECONDS = 20L    // Photos within 20 seconds = rapid burst (very likely same scene)
+    private const val TEMPORAL_CLOSE_BOOST = 6        // Extra tolerance for temporally close photos
+    private const val TEMPORAL_BURST_BOOST = 11       // Extra tolerance for likely burst shots
+    private const val TEMPORAL_RAPID_BOOST = 16       // Very aggressive tolerance for rapid bursts
 
     // For rapid bursts, also relax entry thresholds (color/structure)
     // since temporal proximity is strong evidence of relationship
@@ -146,8 +146,8 @@ object ImageHasher {
     // Color similarity tiers - higher color match = more confidence = more boost allowed
     // True duplicates (same scene) have very high color similarity (0.85+)
     // False positives (different subjects, similar clothes) have moderate similarity (0.60-0.75)
-    private const val COLOR_VERY_HIGH = 0.78      // Same scene, same lighting - full temporal boost
-    private const val COLOR_HIGH = 0.70           // Likely same scene - partial temporal boost
+    private const val COLOR_VERY_HIGH = 0.75      // Same scene, same lighting - full temporal boost
+    private const val COLOR_HIGH = 0.68           // Likely same scene - partial temporal boost
     // Below COLOR_HIGH: minimal temporal boost to avoid false positives
 
     // Adaptive two-stage thresholds (RESTORED to strict values)
