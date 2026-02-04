@@ -22,12 +22,146 @@ A photo gallery management app that helps users quickly organize their photos th
 - View photos from device gallery
 - Basic navigation between photos
 
-### Phase 2 (Planned - Ideas in Exploration)
+### Phase 2 (In Progress)
+- **Duplicate photo detection** ✅ (implemented, being refined)
 - Quick folder organization
 - Batch operations
 - Smart categorization suggestions
 - Photo statistics/insights
-- [Additional features TBD based on user research]
+
+## Duplicate Detection System
+
+### Overview
+The app detects similar/duplicate photos using a multi-stage perceptual hashing approach. Photos are compared using multiple "fingerprints" and grouped together when they're similar enough.
+
+### How It Works (Simple Explanation)
+
+1. **Create Fingerprints**: For each photo, compute 4 types of fingerprints:
+   - **dHash**: Compares brightness of neighboring pixels (fast, catches obvious duplicates)
+   - **pHash**: Analyzes overall image patterns using frequency analysis (more accurate)
+   - **Edge Hash**: Detects outlines/edges (works even with different lighting)
+   - **Color Histogram**: Counts color distribution (sunset = orange, sky = blue)
+
+2. **Compare Photos**: For each pair, check:
+   - Are colors similar? (color histogram)
+   - Are shapes/edges similar? (edge hash)
+   - Were they taken close in time? (timestamps)
+
+3. **Apply Confidence Boosts**: The closer in time + the more similar colors = more tolerance for differences
+
+4. **Group Similar Photos**: Photos that pass all checks are grouped together
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `util/ImageHasher.kt` | Hash computation and comparison logic |
+| `worker/DuplicateScanWorker.kt` | Background scanning and grouping |
+| `data/PhotoHash.kt` | Database entity for storing hashes |
+| `data/PhotoDatabase.kt` | Room database with migrations |
+
+### Tunable Parameters (ImageHasher.kt)
+
+#### Temporal Windows
+Photos taken close together get more lenient matching:
+
+```kotlin
+TEMPORAL_SESSION_SECONDS = 7200   // 2 hours - same photo session
+TEMPORAL_CLOSE_SECONDS = 300     // 5 minutes - close shots
+TEMPORAL_BURST_SECONDS = 60      // 1 minute - likely burst
+TEMPORAL_RAPID_SECONDS = 30      // 30 seconds - rapid burst
+```
+
+#### Temporal Boosts
+Extra tolerance added to hash thresholds based on time proximity:
+
+```kotlin
+TEMPORAL_SESSION_BOOST = 4       // Small boost for same session
+TEMPORAL_CLOSE_BOOST = 12        // Strong boost for close photos
+TEMPORAL_BURST_BOOST = 18        // Very strong for burst shots
+TEMPORAL_RAPID_BOOST = 24        // Maximum for rapid shots
+```
+
+#### Color Similarity Tiers
+Temporal boost is scaled by color similarity (prevents false positives):
+
+```kotlin
+COLOR_VERY_HIGH = 0.72    // Full temporal boost (100%)
+COLOR_HIGH = 0.65         // Partial temporal boost (50%)
+// Below COLOR_HIGH: No temporal boost (0%)
+```
+
+#### Base Hash Thresholds
+Maximum hash distance (Hamming distance) to consider as duplicates:
+
+```kotlin
+DHASH_CERTAIN = 5         // Instant match, skip further checks
+DHASH_THRESHOLD = 12      // Maximum for candidate selection
+PHASH_THRESHOLD = 10      // Confirmation threshold
+PHASH_THRESHOLD_STRICT = 6  // Used when only structure path passes
+```
+
+#### Entry Thresholds
+Minimum similarity to even consider comparing two photos:
+
+```kotlin
+COLOR_HISTOGRAM_THRESHOLD = 0.60  // Minimum color similarity
+EDGE_HASH_THRESHOLD = 8           // Maximum edge hash distance
+```
+
+#### High-Confidence Boosts
+When BOTH color AND structure match strongly:
+
+```kotlin
+HIGH_CONFIDENCE_COLOR = 0.68  // Color threshold for high confidence
+HIGH_CONFIDENCE_EDGE = 8      // Edge threshold for high confidence
+DHASH_BOOST = 6               // Extra dHash tolerance
+PHASH_BOOST = 6               // Extra pHash tolerance
+```
+
+### Threshold Calculation Example
+
+For photos with high color similarity (≥0.72) taken within 30 seconds:
+
+```
+Base dHash threshold:     12
++ High-confidence boost:  +6  (if color≥0.68 AND edge≤8)
++ Temporal boost (full):  +24 (rapid, scaled by color)
+= Maximum threshold:      42
+```
+
+### Grouping Algorithm
+
+Photos are grouped using representative-based clustering with merging:
+
+1. When A~B found: Create group with A as representative
+2. When C wants to join: Must match representative A
+3. When two groups could merge: Merge IF their representatives match
+
+This prevents "chaining" (A~B, B~C, C~D creating one group even if A≠D) while still allowing legitimate merges.
+
+### Tuning Tips
+
+**Too many false positives (different photos grouped together)?**
+- Increase `COLOR_VERY_HIGH` and `COLOR_HIGH` thresholds
+- Decrease temporal boost values
+- Decrease `DHASH_THRESHOLD` and `PHASH_THRESHOLD`
+
+**Missing obvious duplicates?**
+- Decrease `COLOR_VERY_HIGH` and `COLOR_HIGH` thresholds
+- Increase temporal boost values
+- Increase `DHASH_THRESHOLD` and `PHASH_THRESHOLD`
+- Increase temporal window sizes
+
+**Groups being split that should be together?**
+- Check `matchesRepresentative()` threshold in DuplicateScanWorker.kt
+- Currently uses `DHASH_THRESHOLD + 10` for representative matching
+
+### Algorithm Version
+
+When changing hash computation (not just thresholds), increment `CURRENT_ALGORITHM_VERSION` in DuplicateScanWorker.kt to force re-scanning of all photos.
+
+Current version: **5** (edge hash + color histogram)
 
 ## Technical Requirements
 
@@ -251,8 +385,8 @@ Update `versionCode` (integer) and `versionName` (string) in `build.gradle` for 
 ## Future Expansion Ideas (Brainstorming)
 
 Consider these for Phase 2+ features:
-- Duplicate photo detection
-- Similar photo grouping (using ML Kit)
+- ~~Duplicate photo detection~~ ✅ Implemented
+- Similar photo grouping (using ML Kit) - could enhance current detection
 - Photo quality analysis
 - Storage space analytics
 - Backup suggestions before deletion
@@ -279,6 +413,6 @@ Consider these for Phase 2+ features:
 
 ---
 
-**Last Updated**: Initial creation
-**Project Phase**: Phase 1 complete, planning Phase 2
-**Next Milestone**: Finalize Phase 2 feature set, begin implementation
+**Last Updated**: February 2026
+**Project Phase**: Phase 2 in progress - Duplicate detection implemented
+**Next Milestone**: Refine duplicate detection thresholds, reduce false positives
