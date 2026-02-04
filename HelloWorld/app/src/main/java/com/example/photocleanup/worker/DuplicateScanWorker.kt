@@ -177,8 +177,8 @@ class DuplicateScanWorker(
                     Log.w(TAG, "Hash computation FAILED for: ${photo.uri} (dHash=${dHash != null}, pHash=${pHash != null})")
                 }
 
-                // Update progress
-                val progress = ((index + 1) * 50) / photos.size // First 50% for hashing
+                // Update progress (hashing is 0-95%, comparison is quick so we reserve 95-100%)
+                val progress = ((index + 1) * 95) / photos.size
                 setProgress(workDataOf(
                     KEY_STATUS to STATUS_HASHING,
                     KEY_PROGRESS to progress,
@@ -203,7 +203,7 @@ class DuplicateScanWorker(
             // Step 3: Find duplicates by comparing hashes
             setProgress(workDataOf(
                 KEY_STATUS to STATUS_COMPARING,
-                KEY_PROGRESS to 50
+                KEY_PROGRESS to 95
             ))
             try {
                 setForeground(createForegroundInfo("Finding duplicates..."))

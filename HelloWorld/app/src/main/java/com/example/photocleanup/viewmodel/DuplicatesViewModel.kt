@@ -161,11 +161,25 @@ class DuplicatesViewModel(application: Application) : AndroidViewModel(applicati
 
     /**
      * Mark a photo as the one to keep in its group.
+     * Updates the UI state in-place to avoid scroll reset.
      */
     fun markAsKept(groupId: String, photoId: Long) {
         viewModelScope.launch {
+            // Update database
             duplicateGroupDao.setKeptPhoto(groupId, photoId)
-            loadDuplicateGroups()
+
+            // Update UI state in-place (avoids reloading and scroll reset)
+            _duplicateGroups.value = _duplicateGroups.value.map { group ->
+                if (group.groupId == groupId) {
+                    group.copy(
+                        photos = group.photos.map { photo ->
+                            photo.copy(isKept = photo.id == photoId)
+                        }
+                    )
+                } else {
+                    group
+                }
+            }
         }
     }
 
