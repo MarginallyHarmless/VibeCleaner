@@ -140,8 +140,15 @@ object ImageHasher {
 
     // For rapid bursts, also relax entry thresholds (color/structure)
     // since temporal proximity is strong evidence of relationship
-    private const val TEMPORAL_RAPID_COLOR_THRESHOLD = 0.45   // Lower color requirement for rapid bursts
+    private const val TEMPORAL_RAPID_COLOR_THRESHOLD = 0.50   // Lower color requirement for rapid bursts
     private const val TEMPORAL_RAPID_EDGE_THRESHOLD = 12      // Higher edge tolerance for rapid bursts
+
+    // Color similarity tiers - higher color match = more confidence = more boost allowed
+    // True duplicates (same scene) have very high color similarity (0.85+)
+    // False positives (different subjects, similar clothes) have moderate similarity (0.60-0.75)
+    private const val COLOR_VERY_HIGH = 0.82      // Same scene, same lighting - full temporal boost
+    private const val COLOR_HIGH = 0.72           // Likely same scene - partial temporal boost
+    // Below COLOR_HIGH: minimal temporal boost to avoid false positives
 
     // Adaptive two-stage thresholds (RESTORED to strict values)
     // If dHash ≤ DHASH_CERTAIN: definitely duplicates, skip pHash (fast path for burst shots)
@@ -957,13 +964,28 @@ object ImageHasher {
 
                 // Calculate effective thresholds with boosts:
                 // 1. High-confidence boost: when color + structure both match strongly
-                // 2. Temporal boost: when photos are taken close in time (tiers: rapid/burst/close)
-                // These stack because both are independent confidence signals
+                // 2. Temporal boost: SCALED BY COLOR SIMILARITY
+                //    - Very high color (0.82+): full temporal boost (same scene confirmed)
+                //    - High color (0.72-0.82): partial temporal boost (likely same scene)
+                //    - Moderate color (<0.72): minimal boost (could be different subjects)
+                //    This prevents false positives from different subjects with similar colors
                 var thresholdBoost = 0
                 if (isHighConfidence) thresholdBoost += DHASH_BOOST
-                if (isTemporalRapid) thresholdBoost += TEMPORAL_RAPID_BOOST
-                else if (isTemporalBurst) thresholdBoost += TEMPORAL_BURST_BOOST
-                else if (isTemporalClose) thresholdBoost += TEMPORAL_CLOSE_BOOST
+
+                // Scale temporal boost by color similarity
+                val temporalBoostMultiplier = when {
+                    colorSim >= COLOR_VERY_HIGH -> 1.0    // Full boost - definitely same scene
+                    colorSim >= COLOR_HIGH -> 0.5         // Half boost - probably same scene
+                    else -> 0.0                           // No temporal boost - could be false positive
+                }
+
+                val rawTemporalBoost = when {
+                    isTemporalRapid -> TEMPORAL_RAPID_BOOST
+                    isTemporalBurst -> TEMPORAL_BURST_BOOST
+                    isTemporalClose -> TEMPORAL_CLOSE_BOOST
+                    else -> 0
+                }
+                thresholdBoost += (rawTemporalBoost * temporalBoostMultiplier).toInt()
 
                 val effectiveDHashCertain = dHashCertain + thresholdBoost
                 val effectiveDHashThreshold = dHashThreshold + thresholdBoost
@@ -974,9 +996,19 @@ object ImageHasher {
                 // Build boost info string for logging
                 val boostReasons = mutableListOf<String>()
                 if (isHighConfidence) boostReasons.add("high-conf")
-                if (isTemporalRapid) boostReasons.add("rapid≤${timeDiffSeconds}s")
-                else if (isTemporalBurst) boostReasons.add("burst≤${timeDiffSeconds}s")
-                else if (isTemporalClose) boostReasons.add("close≤${timeDiffSeconds}s")
+                if (rawTemporalBoost > 0) {
+                    val timeLabel = when {
+                        isTemporalRapid -> "rapid"
+                        isTemporalBurst -> "burst"
+                        else -> "close"
+                    }
+                    val multiplierLabel = when {
+                        temporalBoostMultiplier >= 1.0 -> "full"
+                        temporalBoostMultiplier >= 0.5 -> "half"
+                        else -> "none"
+                    }
+                    boostReasons.add("$timeLabel=${timeDiffSeconds}s×$multiplierLabel")
+                }
                 val boostInfo = if (boostReasons.isNotEmpty()) " [${boostReasons.joinToString("+")}]" else ""
 
                 // Fast path: very low dHash = definitely duplicates (burst shots, etc.)
@@ -1001,11 +1033,10 @@ object ImageHasher {
                 // - Temporal/high confidence: boosted threshold (tolerates geometric variance)
                 // - Structure-only path: stricter threshold (less certainty)
                 // - Color path: normal threshold
+                // pHash boost also scaled by color similarity (same as dHash boost)
                 var pHashBoost = 0
                 if (isHighConfidence) pHashBoost += PHASH_BOOST
-                if (isTemporalRapid) pHashBoost += TEMPORAL_RAPID_BOOST
-                else if (isTemporalBurst) pHashBoost += TEMPORAL_BURST_BOOST
-                else if (isTemporalClose) pHashBoost += TEMPORAL_CLOSE_BOOST
+                pHashBoost += (rawTemporalBoost * temporalBoostMultiplier).toInt()
 
                 val effectivePHashThreshold = when {
                     pHashBoost > 0 -> pHashThreshold + pHashBoost  // Boosted: relaxed
