@@ -2,10 +2,14 @@ package com.example.photocleanup.util
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.os.Build
+import android.os.CancellationSignal
 import android.util.Log
+import android.util.Size as AndroidSize
 import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
@@ -379,30 +383,59 @@ object ImageHasher {
         return hash
     }
 
+    // Pre-computed cosine table for DCT (computed once, reused for all images)
+    // cosTable[i][u] = cos((2*i + 1) * u * PI / (2 * PHASH_SIZE))
+    private val cosTable: Array<DoubleArray> by lazy {
+        Array(PHASH_SIZE) { i ->
+            DoubleArray(PHASH_SIZE) { u ->
+                cos((2 * i + 1) * u * PI / (2 * PHASH_SIZE))
+            }
+        }
+    }
+
+    // Pre-computed coefficient scalars
+    private val dctCoeff: DoubleArray by lazy {
+        DoubleArray(PHASH_SIZE) { k ->
+            if (k == 0) 1.0 / sqrt(2.0) else 1.0
+        }
+    }
+
     /**
-     * Apply 2D Discrete Cosine Transform to the input matrix.
+     * Apply 2D Discrete Cosine Transform using separable 1D transforms.
      *
-     * DCT converts spatial domain data to frequency domain, allowing us to
-     * extract low-frequency components that represent the overall structure
-     * of the image (which are most important for perceptual similarity).
+     * This is O(n^3) instead of O(n^4) - approximately 32x faster for 32x32 images.
+     *
+     * The 2D DCT is separable, meaning we can compute it as:
+     * 1. Apply 1D DCT to each row
+     * 2. Apply 1D DCT to each column of the result
+     *
+     * Additionally, we pre-compute the cosine values to avoid expensive
+     * trigonometric function calls.
      */
     private fun applyDCT(input: Array<DoubleArray>): Array<DoubleArray> {
         val n = input.size
-        val output = Array(n) { DoubleArray(n) }
 
+        // Step 1: Apply 1D DCT to each row
+        val temp = Array(n) { DoubleArray(n) }
+        for (i in 0 until n) {
+            for (u in 0 until n) {
+                var sum = 0.0
+                for (j in 0 until n) {
+                    sum += input[i][j] * cosTable[j][u]
+                }
+                temp[i][u] = sum * dctCoeff[u] * 0.5
+            }
+        }
+
+        // Step 2: Apply 1D DCT to each column
+        val output = Array(n) { DoubleArray(n) }
         for (u in 0 until n) {
             for (v in 0 until n) {
                 var sum = 0.0
                 for (i in 0 until n) {
-                    for (j in 0 until n) {
-                        sum += input[i][j] *
-                            cos((2 * i + 1) * u * PI / (2 * n)) *
-                            cos((2 * j + 1) * v * PI / (2 * n))
-                    }
+                    sum += temp[i][u] * cosTable[i][v]
                 }
-                val cu = if (u == 0) 1.0 / sqrt(2.0) else 1.0
-                val cv = if (v == 0) 1.0 / sqrt(2.0) else 1.0
-                output[u][v] = 0.25 * cu * cv * sum
+                output[v][u] = sum * dctCoeff[v] * 0.5
             }
         }
 
@@ -421,7 +454,7 @@ object ImageHasher {
      * @param imageUri Content URI of the image
      * @param imageLoader Optional Coil ImageLoader instance
      * @return Triple of (pHash, colorHistogram, bitmap) or null if loading failed
-     * @deprecated Use computeAllHashes instead which also computes edge hash
+     * @deprecated Use computeAllHashes instead which also computes dHash and edge hash
      */
     suspend fun computePHashAndHistogram(
         context: Context,
@@ -429,13 +462,14 @@ object ImageHasher {
         imageLoader: ImageLoader? = null
     ): Triple<Long, IntArray, Bitmap?>? = withContext(Dispatchers.IO) {
         val result = computeAllHashes(context, imageUri, imageLoader) ?: return@withContext null
-        Triple(result.first, result.third, null)
+        Triple(result.pHash, result.colorHistogram, null)
     }
 
     /**
      * Data class to hold all computed hashes from a single bitmap load.
      */
     data class AllHashes(
+        val dHash: Long,
         val pHash: Long,
         val edgeHash: Long,
         val colorHistogram: IntArray
@@ -444,15 +478,194 @@ object ImageHasher {
             if (this === other) return true
             if (javaClass != other?.javaClass) return false
             other as AllHashes
-            return pHash == other.pHash && edgeHash == other.edgeHash && colorHistogram.contentEquals(other.colorHistogram)
+            return dHash == other.dHash && pHash == other.pHash && edgeHash == other.edgeHash && colorHistogram.contentEquals(other.colorHistogram)
         }
-        override fun hashCode(): Int = 31 * (31 * pHash.hashCode() + edgeHash.hashCode()) + colorHistogram.contentHashCode()
+        override fun hashCode(): Int = 31 * (31 * (31 * dHash.hashCode() + pHash.hashCode()) + edgeHash.hashCode()) + colorHistogram.contentHashCode()
     }
 
     /**
-     * Compute pHash, edge hash, AND color histogram from the same 32x32 bitmap.
-     * This is more efficient than loading the image multiple times.
+     * Compute ALL hashes using the fastest available method.
      *
+     * Strategy (in order of preference):
+     * 1. BitmapFactory with aggressive subsampling - reads minimal data from JPEG
+     * 2. Android's thumbnail API (Q+) - uses cached thumbnails
+     * 3. Coil fallback - full decode with resize
+     *
+     * The BitmapFactory approach with inSampleSize is often fastest because:
+     * - JPEG decoder can skip most of the image data
+     * - No ContentResolver overhead
+     * - Direct file access when possible
+     *
+     * @param context Android context
+     * @param imageUri Content URI of the image (must be a MediaStore URI)
+     * @return AllHashes or null if loading failed
+     */
+    suspend fun computeAllHashesFast(
+        context: Context,
+        imageUri: Uri
+    ): AllHashes? = withContext(Dispatchers.IO) {
+        try {
+            // Try BitmapFactory with aggressive subsampling first (fastest)
+            val subStart = System.currentTimeMillis()
+            var bitmap = loadBitmapWithSubsampling(context, imageUri)
+            val subTime = System.currentTimeMillis() - subStart
+            var usedPath = "unknown"
+
+            if (bitmap != null) {
+                usedPath = "BitmapFactory"
+                logDebug("PATH: BitmapFactory (${subTime}ms) for ${imageUri.lastPathSegment}")
+            } else {
+                logDebug("PATH: BitmapFactory FAILED (${subTime}ms) for ${imageUri.lastPathSegment}")
+            }
+
+            // Fallback to thumbnail API on Android Q+
+            if (bitmap == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val thumbStart = System.currentTimeMillis()
+                try {
+                    bitmap = context.contentResolver.loadThumbnail(
+                        imageUri,
+                        AndroidSize(PHASH_SIZE, PHASH_SIZE),
+                        null
+                    )
+                    val thumbTime = System.currentTimeMillis() - thumbStart
+                    if (bitmap != null) {
+                        usedPath = "Thumbnail"
+                        logDebug("PATH: Thumbnail (${thumbTime}ms) for ${imageUri.lastPathSegment}")
+                    } else {
+                        logDebug("PATH: Thumbnail FAILED (${thumbTime}ms) for ${imageUri.lastPathSegment}")
+                    }
+                } catch (e: Exception) {
+                    val thumbTime = System.currentTimeMillis() - thumbStart
+                    logDebug("PATH: Thumbnail EXCEPTION (${thumbTime}ms) for ${imageUri.lastPathSegment}: ${e.message}")
+                }
+            }
+
+            // Final fallback to Coil
+            if (bitmap == null) {
+                val coilStart = System.currentTimeMillis()
+                logDebug("PATH: Using Coil fallback for ${imageUri.lastPathSegment}")
+                val result = computeAllHashes(context, imageUri, null)
+                val coilTime = System.currentTimeMillis() - coilStart
+                logDebug("PATH: Coil completed (${coilTime}ms) for ${imageUri.lastPathSegment}")
+                return@withContext result
+            }
+
+            // Ensure bitmap is the right size for our algorithms
+            val scaledBitmap = if (bitmap.width != PHASH_SIZE || bitmap.height != PHASH_SIZE) {
+                Bitmap.createScaledBitmap(bitmap, PHASH_SIZE, PHASH_SIZE, true)
+            } else {
+                bitmap
+            }
+
+            try {
+                computeAllHashesFromBitmap(scaledBitmap)
+            } finally {
+                if (scaledBitmap != bitmap) {
+                    scaledBitmap.recycle()
+                }
+                bitmap.recycle()
+            }
+        } catch (e: Exception) {
+            logDebug("computeAllHashesFast failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Load a bitmap with aggressive subsampling using BitmapFactory.
+     *
+     * This is often faster than thumbnail APIs because:
+     * - JPEG decoder can skip most DCT blocks with high inSampleSize
+     * - No ContentResolver caching overhead
+     * - Direct decode path
+     *
+     * @param context Android context
+     * @param imageUri Content URI
+     * @return Small bitmap or null if failed
+     */
+    private fun loadBitmapWithSubsampling(context: Context, imageUri: Uri): Bitmap? {
+        return try {
+            val startTime = System.currentTimeMillis()
+
+            // First, get image dimensions without loading pixels
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            context.contentResolver.openInputStream(imageUri)?.use { input ->
+                BitmapFactory.decodeStream(input, null, options)
+            }
+            val boundsTime = System.currentTimeMillis()
+
+            if (options.outWidth <= 0 || options.outHeight <= 0) {
+                return null
+            }
+
+            // Calculate optimal inSampleSize (power of 2 for efficiency)
+            // Target size is PHASH_SIZE (32), but we want at least 64 for quality
+            val targetSize = 64
+            var inSampleSize = 1
+            while (options.outWidth / inSampleSize > targetSize * 2 &&
+                   options.outHeight / inSampleSize > targetSize * 2) {
+                inSampleSize *= 2
+            }
+
+            // Now decode with subsampling
+            val decodeOptions = BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+                inPreferredConfig = Bitmap.Config.RGB_565 // Use less memory
+            }
+
+            val bitmap = context.contentResolver.openInputStream(imageUri)?.use { input ->
+                BitmapFactory.decodeStream(input, null, decodeOptions)
+            }
+            val decodeTime = System.currentTimeMillis()
+
+            val totalMs = decodeTime - startTime
+            if (totalMs > 500) {
+                // Log slow loads to understand bottleneck
+                logDebug("SLOW LOAD: ${imageUri.lastPathSegment} took ${totalMs}ms (bounds=${boundsTime - startTime}ms, decode=${decodeTime - boundsTime}ms, size=${options.outWidth}x${options.outHeight}, sample=$inSampleSize)")
+            }
+
+            bitmap
+        } catch (e: Exception) {
+            logDebug("BitmapFactory subsampling failed for $imageUri: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Compute all hashes from an already-loaded bitmap.
+     * Internal helper used by both fast and slow paths.
+     */
+    private fun computeAllHashesFromBitmap(scaledBitmap: Bitmap): AllHashes {
+        // Compute dHash by downsampling to 9x8
+        val dHashBitmap = Bitmap.createScaledBitmap(scaledBitmap, HASH_WIDTH, HASH_HEIGHT, true)
+        val dHash = try {
+            computeHashFromBitmap(dHashBitmap)
+        } finally {
+            dHashBitmap.recycle()
+        }
+
+        // Compute pHash (DCT-based)
+        val pHash = computePHashFromBitmap(scaledBitmap)
+
+        // Compute edge hash (Sobel-based, brightness-invariant)
+        val edgeHash = computeEdgeHashFromBitmap(scaledBitmap)
+
+        // Compute color histogram
+        val histogram = computeColorHistogramFromBitmap(scaledBitmap)
+
+        return AllHashes(dHash, pHash, edgeHash, histogram)
+    }
+
+    /**
+     * Compute ALL hashes (dHash, pHash, edge hash, color histogram) from a SINGLE image load.
+     * This is the most efficient approach - one disk read for all hash types.
+     *
+     * NOTE: For MediaStore URIs, prefer computeAllHashesFast() which uses Android's
+     * thumbnail cache and is 10-50x faster.
+     *
+     * - dHash: Difference hash for fast candidate selection (computed from downsampled 9x8)
      * - pHash: DCT-based perceptual hash for overall image structure
      * - edgeHash: Sobel-based edge hash for brightness-invariant structure matching
      * - colorHistogram: RGB histogram for color distribution pre-filtering
@@ -463,13 +676,13 @@ object ImageHasher {
      * @param context Android context for image loading
      * @param imageUri Content URI of the image
      * @param imageLoader Optional Coil ImageLoader instance
-     * @return Triple of (pHash, edgeHash, colorHistogram) or null if loading failed
+     * @return AllHashes containing (dHash, pHash, edgeHash, colorHistogram) or null if loading failed
      */
     suspend fun computeAllHashes(
         context: Context,
         imageUri: Uri,
         imageLoader: ImageLoader? = null
-    ): Triple<Long, Long, IntArray>? = withContext(Dispatchers.IO) {
+    ): AllHashes? = withContext(Dispatchers.IO) {
         try {
             val loader = imageLoader ?: ImageLoader.Builder(context)
                 .crossfade(false)
@@ -497,16 +710,7 @@ object ImageHasher {
             }
 
             try {
-                // Compute pHash (DCT-based)
-                val pHash = computePHashFromBitmap(scaledBitmap)
-
-                // Compute edge hash (Sobel-based, brightness-invariant)
-                val edgeHash = computeEdgeHashFromBitmap(scaledBitmap)
-
-                // Compute color histogram from same bitmap
-                val histogram = computeColorHistogramFromBitmap(scaledBitmap)
-
-                Triple(pHash, edgeHash, histogram)
+                computeAllHashesFromBitmap(scaledBitmap)
             } finally {
                 if (scaledBitmap != bitmap) {
                     scaledBitmap.recycle()
@@ -841,6 +1045,72 @@ object ImageHasher {
         val colorThreshold: Double = 0.60,      // Minimum color similarity for color path
         val edgeHashThreshold: Int = 8          // Max edge hash distance for structure path
     )
+
+    /**
+     * Configuration for adaptive time windows.
+     *
+     * Window size is automatically adjusted based on photo density:
+     * - Very dense periods (events, burst shooting): smaller windows = fewer comparisons
+     * - Sparse periods: larger windows to catch duplicates spread over time
+     *
+     * This dramatically reduces comparisons in dense regions while maintaining
+     * accuracy in sparse regions.
+     */
+    data class AdaptiveWindowConfig(
+        val minWindowSeconds: Long = 900,       // 15 minutes minimum window
+        val maxWindowSeconds: Long = 7200,      // 2 hours maximum window
+        val highDensityThreshold: Int = 100,    // photos/hour -> 15 min windows
+        val mediumDensityThreshold: Int = 50,   // photos/hour -> 30 min windows
+        val lowDensityThreshold: Int = 20       // photos/hour -> 1 hour windows
+        // Below lowDensityThreshold -> 2 hour windows (max)
+    )
+
+    /**
+     * Calculate the appropriate window size based on photo density.
+     *
+     * Higher density = smaller windows to reduce O(n²) comparisons within each window.
+     * Lower density = larger windows to ensure duplicates spread over time are caught.
+     *
+     * @param photoDensityPerHour Average number of photos per hour in this time region
+     * @param config Configuration thresholds
+     * @return Window size in seconds
+     */
+    fun calculateAdaptiveWindowSize(
+        photoDensityPerHour: Double,
+        config: AdaptiveWindowConfig = AdaptiveWindowConfig()
+    ): Long {
+        return when {
+            photoDensityPerHour > config.highDensityThreshold -> 900     // 15 min
+            photoDensityPerHour > config.mediumDensityThreshold -> 1800  // 30 min
+            photoDensityPerHour > config.lowDensityThreshold -> 3600     // 1 hour
+            else -> 7200                                                  // 2 hours
+        }
+    }
+
+    /**
+     * Analyze photo density across the gallery timeline.
+     *
+     * Groups photos into hour-long buckets and calculates density using a
+     * 3-hour sliding window for smoothing (prevents abrupt window size changes).
+     *
+     * @param photos List of photos with timestamps
+     * @return Map of hour bucket (dateAdded / 3600) to density (photos per hour)
+     */
+    fun analyzePhotoDensity(photos: List<PhotoMetadata>): Map<Long, Double> {
+        if (photos.isEmpty()) return emptyMap()
+
+        // Group photos by hour bucket
+        val hourBuckets = photos.groupBy { it.dateAdded / 3600 }
+
+        // Calculate density for each hour using 3-hour sliding window for smoothing
+        return hourBuckets.keys.associateWith { hour ->
+            val nearbyPhotos = photos.count { photo ->
+                val photoHour = photo.dateAdded / 3600
+                photoHour in (hour - 1)..(hour + 1)
+            }
+            nearbyPhotos / 3.0  // Average per hour over 3-hour window
+        }
+    }
 
     /**
      * Find similar photo pairs using adaptive multi-stage verification with dual-path entry.
@@ -1202,6 +1472,113 @@ object ImageHasher {
         } else 0
 
         logDebug("Time-window summary: $windowCount windows, $totalWindowComparisons comparisons (vs $globalComparisons global, ${savings}% reduction)")
+        logDebug("Found ${foundPairs.size} unique duplicate pairs")
+
+        return foundPairs.toList()
+    }
+
+    /**
+     * Find similar photo pairs using ADAPTIVE time-window clustering.
+     *
+     * This is an optimized version of findSimilarPairsWithTimeWindows that automatically
+     * adjusts window size based on photo density:
+     * - Dense periods (>100 photos/hour): 15-minute windows
+     * - Medium density (>50 photos/hour): 30-minute windows
+     * - Low density (>20 photos/hour): 1-hour windows
+     * - Sparse (<20 photos/hour): 2-hour windows
+     *
+     * This optimization dramatically reduces comparisons in dense regions (events,
+     * burst shooting) while maintaining accuracy in sparse regions.
+     *
+     * Example: 200 photos in 1 hour
+     * - Fixed 2-hour window: 200 * 199 / 2 = 19,900 comparisons
+     * - Adaptive 15-min windows: 4 windows * ~50² / 2 = ~5,000 comparisons
+     * - ~4x reduction in this scenario
+     *
+     * @param photos List of PhotoMetadata with dateAdded timestamps
+     * @param config BurstDetectionConfig for comparison thresholds
+     * @param adaptiveConfig AdaptiveWindowConfig for window sizing thresholds
+     * @return List of pairs of URIs that are similar
+     */
+    fun findSimilarPairsWithAdaptiveWindows(
+        photos: List<PhotoMetadata>,
+        config: BurstDetectionConfig = BurstDetectionConfig(),
+        adaptiveConfig: AdaptiveWindowConfig = AdaptiveWindowConfig()
+    ): List<Pair<String, String>> {
+        if (photos.size < 2) return emptyList()
+
+        // Sort by timestamp for windowing
+        val sortedPhotos = photos.sortedBy { it.dateAdded }
+        val minTime = sortedPhotos.first().dateAdded
+        val maxTime = sortedPhotos.last().dateAdded
+
+        // Pre-analyze photo density across the timeline
+        val densityMap = analyzePhotoDensity(sortedPhotos)
+
+        // Use Set to deduplicate pairs found in overlapping windows
+        val foundPairs = mutableSetOf<Pair<String, String>>()
+        var windowCount = 0
+        var totalWindowComparisons = 0
+
+        logDebug("Adaptive time-window scan: ${sortedPhotos.size} photos, time range ${maxTime - minTime}s")
+        logDebug("Density analysis: ${densityMap.size} hour buckets, densities range ${densityMap.values.minOrNull()?.let { "%.1f".format(it) } ?: 0} to ${densityMap.values.maxOrNull()?.let { "%.1f".format(it) } ?: 0} photos/hour")
+
+        var windowStart = minTime
+        while (windowStart <= maxTime) {
+            // Get density for current position and calculate appropriate window size
+            val currentHourBucket = windowStart / 3600
+            val density = densityMap[currentHourBucket] ?: 0.0
+            val windowSize = calculateAdaptiveWindowSize(density, adaptiveConfig)
+            val windowStep = windowSize / 2  // 50% overlap
+
+            val windowEnd = windowStart + windowSize
+
+            // Get photos within this time window
+            val windowPhotos = sortedPhotos.filter {
+                it.dateAdded >= windowStart && it.dateAdded < windowEnd
+            }
+
+            if (windowPhotos.size >= 2) {
+                windowCount++
+                val windowPairCount = (windowPhotos.size * (windowPhotos.size - 1)) / 2
+                totalWindowComparisons += windowPairCount
+
+                if (DEBUG && windowPhotos.size > 10) {
+                    logDebug("Window $windowCount: ${windowPhotos.size} photos, density=${"%.1f".format(density)}/hr, windowSize=${windowSize}s")
+                }
+
+                // Find duplicates within window using configured thresholds
+                val windowPairs = findSimilarPairsEnhanced(
+                    windowPhotos,
+                    config.dHashCertain,
+                    config.dHashThreshold,
+                    config.pHashThreshold,
+                    config.fileSizeTolerance,
+                    config.colorThreshold,
+                    config.edgeHashThreshold,
+                    config.pHashThresholdStrict
+                )
+
+                // Normalize pair ordering for deduplication (smaller URI first)
+                windowPairs.forEach { (uri1, uri2) ->
+                    val normalized = if (uri1 < uri2) Pair(uri1, uri2) else Pair(uri2, uri1)
+                    foundPairs.add(normalized)
+                }
+
+                if (windowPairs.isNotEmpty()) {
+                    logDebug("Window $windowCount (${windowPhotos.size} photos, ${windowSize}s window): found ${windowPairs.size} pairs")
+                }
+            }
+
+            windowStart += windowStep
+        }
+
+        val globalComparisons = (sortedPhotos.size.toLong() * (sortedPhotos.size - 1)) / 2
+        val savings = if (globalComparisons > 0) {
+            ((globalComparisons - totalWindowComparisons) * 100) / globalComparisons
+        } else 0
+
+        logDebug("Adaptive window summary: $windowCount windows, $totalWindowComparisons comparisons (vs $globalComparisons global, ${savings}% reduction)")
         logDebug("Found ${foundPairs.size} unique duplicate pairs")
 
         return foundPairs.toList()

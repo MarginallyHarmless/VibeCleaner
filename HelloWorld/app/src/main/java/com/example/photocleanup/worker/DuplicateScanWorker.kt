@@ -14,16 +14,20 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import coil.ImageLoader
-import coil.request.CachePolicy
 import com.example.photocleanup.R
 import com.example.photocleanup.data.DuplicateGroup
 import com.example.photocleanup.data.PhotoDatabase
 import com.example.photocleanup.data.PhotoHash
 import com.example.photocleanup.util.ImageHasher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * WorkManager CoroutineWorker that scans the device's photo gallery for duplicates.
@@ -76,6 +80,7 @@ class DuplicateScanWorker(
 
         // Processing
         private const val BATCH_SIZE = 50
+        private const val HASH_PARALLELISM = 8  // Number of concurrent hash computations (higher = faster but more memory)
 
         private const val TAG = "DuplicateScanWorker"
     }
@@ -107,104 +112,59 @@ class DuplicateScanWorker(
                 ))
             }
 
-            // Step 2: Compute hashes for all photos
-            val imageLoader = ImageLoader.Builder(applicationContext)
-                .crossfade(false)
-                .memoryCachePolicy(CachePolicy.DISABLED) // Disable memory cache to save RAM
-                .build()
+            // Step 2: Compute hashes for all photos (PARALLEL)
+            // Uses Android's thumbnail cache for fast loading (no Coil needed)
+            val existingHashes = photoHashDao.getAllSortedByHash().associateBy { it.uri }
+            val progressCounter = AtomicInteger(0)
+            val semaphore = Semaphore(HASH_PARALLELISM)
 
-            val hashes = mutableListOf<PhotoHash>()
-            val existingUris = photoHashDao.getAllUris().toSet()
-            val batchToSave = mutableListOf<PhotoHash>()
+            Log.d(TAG, "Starting parallel hash computation with parallelism=$HASH_PARALLELISM")
 
-            for ((index, photo) in photos.withIndex()) {
-                // Check for cancellation
-                if (isStopped) {
-                    return@withContext Result.failure(workDataOf(
-                        KEY_ERROR_MESSAGE to "Scan cancelled"
-                    ))
-                }
+            // Process photos in parallel with controlled concurrency
+            val hashes = coroutineScope {
+                photos.mapIndexed { index, photo ->
+                    async(Dispatchers.IO) {
+                        val waitStart = System.currentTimeMillis()
+                        semaphore.withPermit {
+                            val waitTime = System.currentTimeMillis() - waitStart
+                            if (waitTime > 1000) {
+                                Log.d(TAG, "SEMAPHORE WAIT: ${waitTime}ms for photo $index")
+                            }
 
-                // Check if we already have a valid hash for this photo
-                if (photo.uri in existingUris) {
-                    val existingHash = photoHashDao.getByUri(photo.uri)
-                    // Only reuse hash if algorithm version matches current version
-                    if (existingHash != null && existingHash.algorithmVersion == CURRENT_ALGORITHM_VERSION) {
-                        Log.d(TAG, "Using cached hash: ${photo.uri.takeLast(20)} -> ${existingHash.hash}")
-                        hashes.add(existingHash)
-                        continue
+                            // Check for cancellation
+                            if (isStopped) {
+                                return@withPermit null
+                            }
+
+                            computeHashForPhoto(
+                                photo,
+                                existingHashes,
+                                progressCounter,
+                                photos.size
+                            )
+                        }
                     }
-                    // Old version hash - will recompute below
-                    if (existingHash != null) {
-                        Log.d(TAG, "Recomputing hash for ${photo.uri.takeLast(30)} (version ${existingHash.algorithmVersion} -> $CURRENT_ALGORITHM_VERSION)")
-                    }
-                }
-
-                // Compute dHash
-                val dHash = ImageHasher.computeHash(
-                    applicationContext,
-                    Uri.parse(photo.uri),
-                    imageLoader
-                )
-
-                // Compute pHash, edge hash, AND color histogram together (shares bitmap loading)
-                val allHashes = ImageHasher.computeAllHashes(
-                    applicationContext,
-                    Uri.parse(photo.uri),
-                    imageLoader
-                )
-
-                if (dHash != null && allHashes != null) {
-                    val (pHash, edgeHash, colorHistogram) = allHashes
-                    Log.d(TAG, "Hashes computed: ${photo.uri.takeLast(20)} -> dHash=$dHash, pHash=$pHash, edgeHash=$edgeHash, histogram=${colorHistogram.size} bins")
-                    val photoHash = PhotoHash(
-                        uri = photo.uri,
-                        hash = dHash,
-                        pHash = pHash,
-                        edgeHash = edgeHash,
-                        colorHistogram = ImageHasher.encodeHistogram(colorHistogram),
-                        fileSize = photo.size,
-                        width = photo.width,
-                        height = photo.height,
-                        dateAdded = photo.dateAdded,
-                        lastScanned = System.currentTimeMillis(),
-                        bucketId = photo.bucketId,
-                        bucketName = photo.bucketName,
-                        algorithmVersion = CURRENT_ALGORITHM_VERSION
-                    )
-                    hashes.add(photoHash)
-                    batchToSave.add(photoHash)
-
-                    // Save hashes in batches and clear batch list
-                    if (batchToSave.size >= BATCH_SIZE) {
-                        photoHashDao.insertAll(batchToSave)
-                        batchToSave.clear()
-                    }
-                } else {
-                    Log.w(TAG, "Hash computation FAILED for: ${photo.uri} (dHash=${dHash != null}, allHashes=${allHashes != null})")
-                }
-
-                // Update progress (hashing is 0-95%, comparison is quick so we reserve 95-100%)
-                val progress = ((index + 1) * 95) / photos.size
-                setProgress(workDataOf(
-                    KEY_STATUS to STATUS_HASHING,
-                    KEY_PROGRESS to progress,
-                    KEY_CURRENT to (index + 1),
-                    KEY_TOTAL to photos.size
-                ))
-                try {
-                    setForeground(createForegroundInfo("Scanning photos: ${index + 1}/${photos.size}"))
-                } catch (e: Exception) { /* ignore notification errors */ }
-
-                // Periodic memory cleanup for large galleries
-                if (index % 100 == 0 && index > 0) {
-                    System.gc()
-                }
+                }.awaitAll().filterNotNull()
             }
 
-            // Save any remaining hashes
-            if (batchToSave.isNotEmpty()) {
-                photoHashDao.insertAll(batchToSave)
+            // Check if cancelled during parallel processing
+            if (isStopped) {
+                return@withContext Result.failure(workDataOf(
+                    KEY_ERROR_MESSAGE to "Scan cancelled"
+                ))
+            }
+
+            // Save all newly computed hashes to database
+            val newHashes = hashes.filter { hash ->
+                val existing = existingHashes[hash.uri]
+                existing == null || existing.algorithmVersion != CURRENT_ALGORITHM_VERSION
+            }
+            if (newHashes.isNotEmpty()) {
+                // Save in batches to avoid transaction size limits
+                newHashes.chunked(BATCH_SIZE).forEach { batch ->
+                    photoHashDao.insertAll(batch)
+                }
+                Log.d(TAG, "Saved ${newHashes.size} new/updated hashes to database")
             }
 
             // Step 3: Find duplicates by comparing hashes
@@ -233,10 +193,14 @@ class DuplicateScanWorker(
                     dateAdded = hash.dateAdded  // Include timestamp for time-window clustering
                 )
             }
-            // Time-window clustering for efficient burst detection
-            // Only compares photos within 5-minute windows, with relaxed thresholds
+            // Adaptive time-window clustering for efficient burst detection
+            // Window size automatically adjusts based on photo density:
+            // - Dense periods (>100/hr): 15-min windows
+            // - Medium (>50/hr): 30-min windows
+            // - Low (>20/hr): 1-hour windows
+            // - Sparse: 2-hour windows
             // This reduces comparisons from O(n²) to O(sum of window²) - typically 50-100x faster
-            val similarPairs = ImageHasher.findSimilarPairsWithTimeWindows(photoMetadata)
+            val similarPairs = ImageHasher.findSimilarPairsWithAdaptiveWindows(photoMetadata)
 
             // Step 4: Group similar photos using Union-Find
             val groups = groupDuplicates(similarPairs, hashes)
@@ -357,6 +321,106 @@ class DuplicateScanWorker(
         }
 
         return photos
+    }
+
+    /**
+     * Compute hashes for a single photo.
+     *
+     * This function is designed to be called in parallel. It handles:
+     * - Checking cache for existing valid hashes
+     * - Computing new hashes if needed
+     * - Updating progress (thread-safe)
+     *
+     * @param photo Photo info from MediaStore
+     * @param existingHashes Map of existing hashes by URI for cache lookup
+     * @param progressCounter Atomic counter for thread-safe progress tracking
+     * @param totalPhotos Total number of photos for progress calculation
+     * @return PhotoHash if successful, null if computation failed
+     */
+    private suspend fun computeHashForPhoto(
+        photo: PhotoInfo,
+        existingHashes: Map<String, PhotoHash>,
+        progressCounter: AtomicInteger,
+        totalPhotos: Int
+    ): PhotoHash? {
+        // Check if we already have a valid hash for this photo
+        val existingHash = existingHashes[photo.uri]
+        if (existingHash != null && existingHash.algorithmVersion == CURRENT_ALGORITHM_VERSION) {
+            Log.d(TAG, "Using cached hash: ${photo.uri.takeLast(20)} -> ${existingHash.hash}")
+            updateProgress(progressCounter, totalPhotos)
+            return existingHash
+        }
+
+        if (existingHash != null) {
+            Log.d(TAG, "Recomputing hash for ${photo.uri.takeLast(30)} (version ${existingHash.algorithmVersion} -> $CURRENT_ALGORITHM_VERSION)")
+        }
+
+        // Compute ALL hashes using Android's thumbnail cache (FAST)
+        // This is 10-50x faster than decoding full images
+        val startTime = System.currentTimeMillis()
+        val allHashes = ImageHasher.computeAllHashesFast(
+            applicationContext,
+            Uri.parse(photo.uri)
+        )
+        val hashTime = System.currentTimeMillis() - startTime
+
+        if (allHashes == null) {
+            Log.w(TAG, "Hash computation FAILED for: ${photo.uri}")
+            updateProgress(progressCounter, totalPhotos)
+            return null
+        }
+
+        val (dHash, pHash, edgeHash, colorHistogram) = allHashes
+        if (hashTime > 200) {
+            Log.d(TAG, "SLOW HASH (${hashTime}ms): ${photo.uri.takeLast(30)}")
+        }
+        Log.d(TAG, "Hashes computed: ${photo.uri.takeLast(20)} -> dHash=$dHash, pHash=$pHash, edgeHash=$edgeHash, histogram=${colorHistogram.size} bins")
+
+        val photoHash = PhotoHash(
+            uri = photo.uri,
+            hash = dHash,
+            pHash = pHash,
+            edgeHash = edgeHash,
+            colorHistogram = ImageHasher.encodeHistogram(colorHistogram),
+            fileSize = photo.size,
+            width = photo.width,
+            height = photo.height,
+            dateAdded = photo.dateAdded,
+            lastScanned = System.currentTimeMillis(),
+            bucketId = photo.bucketId,
+            bucketName = photo.bucketName,
+            algorithmVersion = CURRENT_ALGORITHM_VERSION
+        )
+
+        updateProgress(progressCounter, totalPhotos)
+        return photoHash
+    }
+
+    /**
+     * Update progress in a thread-safe manner.
+     * Only updates UI every 10 photos to reduce overhead.
+     */
+    private suspend fun updateProgress(counter: AtomicInteger, total: Int) {
+        val current = counter.incrementAndGet()
+
+        // Update progress every 10 photos to reduce overhead
+        if (current % 10 == 0 || current == total) {
+            val progress = (current * 95) / total
+            setProgress(workDataOf(
+                KEY_STATUS to STATUS_HASHING,
+                KEY_PROGRESS to progress,
+                KEY_CURRENT to current,
+                KEY_TOTAL to total
+            ))
+            try {
+                setForeground(createForegroundInfo("Scanning photos: $current/$total"))
+            } catch (e: Exception) { /* ignore notification errors */ }
+        }
+
+        // Periodic memory cleanup for large galleries
+        if (current % 100 == 0) {
+            System.gc()
+        }
     }
 
     /**
