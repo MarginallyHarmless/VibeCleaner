@@ -32,7 +32,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.size.Size
 import com.example.photocleanup.data.DuplicateGroupWithPhotos
 import com.example.photocleanup.data.DuplicatePhotoInfo
 import com.example.photocleanup.ui.theme.AccentPrimary
@@ -138,7 +140,10 @@ private fun DuplicatePhotoThumbnail(
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(photo.uri)
-                .crossfade(true)
+                .size(Size(256, 256))  // Load thumbnail size, not full resolution
+                .crossfade(false)      // Disable animation for smoother scrolling
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
                 .build(),
             contentDescription = "Duplicate photo",
             contentScale = ContentScale.Crop,
