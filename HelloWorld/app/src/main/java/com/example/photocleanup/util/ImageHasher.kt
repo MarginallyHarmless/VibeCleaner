@@ -1583,4 +1583,60 @@ object ImageHasher {
 
         return foundPairs.toList()
     }
+
+    /**
+     * Load a 64x64 bitmap for quality analysis.
+     *
+     * Uses BitmapFactory with aggressive subsampling to quickly load a small
+     * version of the image suitable for quality metrics computation.
+     *
+     * @param context Android context for ContentResolver access
+     * @param uri Content URI of the image
+     * @return 64x64 Bitmap or null if loading failed
+     */
+    fun loadBitmapForQuality(context: Context, uri: Uri): Bitmap? {
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeStream(inputStream, null, options)
+
+                val targetSize = 64
+                options.inSampleSize = calculateInSampleSize(options, targetSize, targetSize)
+                options.inJustDecodeBounds = false
+
+                context.contentResolver.openInputStream(uri)?.use { stream2 ->
+                    BitmapFactory.decodeStream(stream2, null, options)?.let { bitmap ->
+                        Bitmap.createScaledBitmap(bitmap, 64, 64, true).also {
+                            if (it != bitmap) bitmap.recycle()
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (DEBUG) Log.e(TAG, "Failed to load bitmap for quality: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Calculate optimal inSampleSize for BitmapFactory.
+     * Returns a power of 2 for efficient JPEG decoding.
+     */
+    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+        val (height, width) = options.outHeight to options.outWidth
+        var inSampleSize = 1
+
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight = height / 2
+            val halfWidth = width / 2
+
+            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+
+        return inSampleSize
+    }
 }

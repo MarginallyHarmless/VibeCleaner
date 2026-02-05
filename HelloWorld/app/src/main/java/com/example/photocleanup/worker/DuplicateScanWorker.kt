@@ -19,6 +19,7 @@ import com.example.photocleanup.data.DuplicateGroup
 import com.example.photocleanup.data.PhotoDatabase
 import com.example.photocleanup.data.PhotoHash
 import com.example.photocleanup.util.ImageHasher
+import com.example.photocleanup.util.QualityAnalyzer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -55,7 +56,8 @@ class DuplicateScanWorker(
         // Version 3: Added pHash (perceptual hash using DCT) for two-stage duplicate detection
         // Version 4: Added color histogram pre-filter and restored strict thresholds
         // Version 5: Added edge hash for brightness-invariant structure matching (dual-path entry)
-        const val CURRENT_ALGORITHM_VERSION = 5
+        // Version 6: Added quality analysis (sharpness, exposure, noise detection)
+        const val CURRENT_ALGORITHM_VERSION = 6
 
         // Progress data keys
         const val KEY_PROGRESS = "progress"
@@ -376,12 +378,44 @@ class DuplicateScanWorker(
         }
         Log.d(TAG, "Hashes computed: ${photo.uri.takeLast(20)} -> dHash=$dHash, pHash=$pHash, edgeHash=$edgeHash, histogram=${colorHistogram.size} bins")
 
+        // Compute quality metrics
+        val qualityStart = System.currentTimeMillis()
+        val qualityBitmap = ImageHasher.loadBitmapForQuality(applicationContext, Uri.parse(photo.uri))
+        val qualityResult = if (qualityBitmap != null) {
+            try {
+                QualityAnalyzer.analyze(qualityBitmap)
+            } finally {
+                qualityBitmap.recycle()
+            }
+        } else {
+            // Default quality result if bitmap loading fails
+            QualityAnalyzer.QualityResult(
+                sharpnessScore = 0.5f,
+                exposureScore = 0.5f,
+                noiseScore = 0.3f,
+                overallQuality = 0.5f,
+                issues = emptyList()
+            )
+        }
+        val qualityTime = System.currentTimeMillis() - qualityStart
+        if (qualityTime > 100) {
+            Log.d(TAG, "SLOW QUALITY (${qualityTime}ms): ${photo.uri.takeLast(30)}")
+        }
+        if (qualityResult.hasIssues) {
+            Log.d(TAG, "Quality issues: ${photo.uri.takeLast(20)} -> ${qualityResult.issuesString}, overall=${qualityResult.overallQuality}")
+        }
+
         val photoHash = PhotoHash(
             uri = photo.uri,
             hash = dHash,
             pHash = pHash,
             edgeHash = edgeHash,
             colorHistogram = ImageHasher.encodeHistogram(colorHistogram),
+            sharpnessScore = qualityResult.sharpnessScore,
+            exposureScore = qualityResult.exposureScore,
+            noiseScore = qualityResult.noiseScore,
+            overallQuality = qualityResult.overallQuality,
+            qualityIssues = qualityResult.issuesString,
             fileSize = photo.size,
             width = photo.width,
             height = photo.height,
