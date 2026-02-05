@@ -29,14 +29,11 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -55,6 +52,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.photocleanup.data.ReviewedPhoto
+import com.example.photocleanup.ui.components.AppButton
+import com.example.photocleanup.ui.components.ButtonIntent
+import com.example.photocleanup.ui.components.ButtonVariant
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.ActionDelete
 import com.example.photocleanup.ui.theme.ActionKeep
@@ -129,37 +129,22 @@ fun ToDeleteScreen(
                         .padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    OutlinedButton(
+                    AppButton(
+                        text = "Restore",
                         onClick = { viewModel.restoreSelected() },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = ActionKeep
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text("Restore")
-                    }
+                        variant = ButtonVariant.Secondary,
+                        intent = ButtonIntent.Positive,
+                        leadingIcon = Icons.Default.Refresh
+                    )
 
-                    Button(
+                    AppButton(
+                        text = "Delete",
                         onClick = { viewModel.requestBulkDelete() },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = ActionDelete
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.size(8.dp))
-                        Text("Delete")
-                    }
+                        intent = ButtonIntent.Destructive,
+                        leadingIcon = Icons.Default.Delete
+                    )
                 }
             }
         },
@@ -224,7 +209,7 @@ private fun PhotoGridItem(
                 if (isSelected) {
                     Modifier.border(
                         width = 3.dp,
-                        color = AccentPrimary,
+                        color = ActionDelete,
                         shape = RoundedCornerShape(8.dp)
                     )
                 } else {
@@ -251,7 +236,7 @@ private fun PhotoGridItem(
                     .align(Alignment.TopEnd)
                     .padding(6.dp)
                     .size(24.dp)
-                    .background(AccentPrimary, CircleShape),
+                    .background(ActionDelete, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

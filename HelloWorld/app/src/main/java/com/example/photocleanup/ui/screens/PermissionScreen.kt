@@ -16,21 +16,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.photocleanup.ui.components.PrimaryButton
+import com.example.photocleanup.ui.components.AppButton
+import com.example.photocleanup.ui.components.ButtonVariant
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.AccentPrimaryDim
 import com.example.photocleanup.ui.theme.DarkBackground
@@ -101,7 +99,7 @@ fun PermissionScreen(
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            PrimaryButton(
+            AppButton(
                 text = "Grant Permission",
                 onClick = { permissionState.launchPermissionRequest() }
             )
@@ -162,7 +160,7 @@ fun FullStorageAccessPrompt(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            PrimaryButton(
+            AppButton(
                 text = "Open Settings",
                 onClick = {
                     val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
@@ -174,22 +172,11 @@ fun FullStorageAccessPrompt(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Button(
+            AppButton(
+                text = "Close",
                 onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = AccentPrimary.copy(alpha = 0.15f),
-                    contentColor = AccentPrimary
-                )
-            ) {
-                Text(
-                    text = "Close",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-            }
+                variant = ButtonVariant.Secondary
+            )
         }
     }
 }

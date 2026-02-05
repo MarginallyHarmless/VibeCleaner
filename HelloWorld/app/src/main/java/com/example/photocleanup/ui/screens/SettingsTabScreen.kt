@@ -15,13 +15,10 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,8 +31,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.photocleanup.ui.components.AppButton
+import com.example.photocleanup.ui.components.ButtonVariant
+import com.example.photocleanup.ui.components.DialogButton
+import com.example.photocleanup.ui.components.DialogButtonIntent
 import com.example.photocleanup.ui.theme.AccentPrimary
-import com.example.photocleanup.ui.theme.AccentPrimaryMuted
 import com.example.photocleanup.viewmodel.PhotoViewModel
 
 @Composable
@@ -103,21 +103,11 @@ fun SettingsTabScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                Button(
+                AppButton(
+                    text = "Reset All Reviews",
                     onClick = { showResetDialog = true },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AccentPrimaryMuted.copy(alpha = 0.3f),
-                        contentColor = AccentPrimary
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "Reset All Reviews",
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-                }
+                    variant = ButtonVariant.Secondary
+                )
             }
         }
 
@@ -146,19 +136,21 @@ fun SettingsTabScreen(
                 Text("This will clear your review history and show all photos again for review. Deleted photos will not be restored.")
             },
             confirmButton = {
-                TextButton(
+                DialogButton(
+                    text = "Reset",
                     onClick = {
                         viewModel.resetAllReviews()
                         showResetDialog = false
-                    }
-                ) {
-                    Text("Reset", color = AccentPrimary)
-                }
+                    },
+                    intent = DialogButtonIntent.Positive
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showResetDialog = false }) {
-                    Text("Cancel")
-                }
+                DialogButton(
+                    text = "Cancel",
+                    onClick = { showResetDialog = false },
+                    intent = DialogButtonIntent.Neutral
+                )
             }
         )
     }

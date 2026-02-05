@@ -29,8 +29,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.animation.core.animateFloatAsState
@@ -51,7 +49,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +59,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.example.photocleanup.data.MenuFilter
 import com.example.photocleanup.ui.components.AlbumSelector
+import com.example.photocleanup.ui.components.AppButton
+import com.example.photocleanup.ui.components.ButtonVariant
+import com.example.photocleanup.ui.components.DialogButton
+import com.example.photocleanup.ui.components.DialogButtonIntent
 import com.example.photocleanup.ui.components.ProgressIndicator
 import com.example.photocleanup.ui.components.SwipeablePhotoCard
 import com.example.photocleanup.ui.theme.AccentPrimary
@@ -439,25 +440,19 @@ private fun AllDoneContent(
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            OutlinedButton(
+            AppButton(
+                text = "Back",
                 onClick = onBack,
-                modifier = Modifier.clip(RoundedCornerShape(24.dp))
-            ) {
-                Text(
-                    text = "Back",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                )
-            }
+                variant = ButtonVariant.Secondary
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            TextButton(onClick = onReviewAgain) {
-                Text(
-                    text = "Review Again",
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+            DialogButton(
+                text = "Review Again",
+                onClick = onReviewAgain,
+                intent = DialogButtonIntent.Positive
+            )
         }
     }
 }

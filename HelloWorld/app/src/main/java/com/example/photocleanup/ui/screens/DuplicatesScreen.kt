@@ -24,19 +24,14 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,13 +52,16 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.photocleanup.data.ScanState
+import com.example.photocleanup.ui.components.AppButton
+import com.example.photocleanup.ui.components.AppFab
+import com.example.photocleanup.ui.components.ButtonIntent
+import com.example.photocleanup.ui.components.DialogButton
+import com.example.photocleanup.ui.components.DialogButtonIntent
 import com.example.photocleanup.ui.components.DuplicateGroupCard
-import com.example.photocleanup.ui.components.PrimaryButton
 import com.example.photocleanup.ui.components.ScanStatusCard
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.AccentPrimaryDim
 import com.example.photocleanup.ui.theme.ActionDelete
-import com.example.photocleanup.ui.theme.ActionRefresh
 import com.example.photocleanup.ui.theme.TextSecondary
 import com.example.photocleanup.viewmodel.DuplicatesViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -223,40 +221,23 @@ fun DuplicatesScreen(
                 ) {
                     // Delete button (only shown when photos are selected)
                     if (selectedPhotoIds.isNotEmpty()) {
-                        Button(
+                        AppButton(
+                            text = "Delete ${selectedPhotoIds.size} photos",
                             onClick = {
                                 activity?.let { viewModel.deleteSelectedPhotos(it) }
                             },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = AccentPrimary,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Delete,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Delete ${selectedPhotoIds.size} photos",
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                        }
+                            intent = ButtonIntent.Destructive,
+                            leadingIcon = Icons.Filled.Delete,
+                            fillWidth = false
+                        )
                     }
 
                     // Refresh FAB (teal)
-                    FloatingActionButton(
+                    AppFab(
                         onClick = { viewModel.startScan() },
-                        containerColor = ActionRefresh
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Rescan",
-                            tint = Color.White
-                        )
-                    }
+                        icon = Icons.Filled.Refresh,
+                        contentDescription = "Rescan"
+                    )
                 }
             }
 
@@ -342,7 +323,7 @@ private fun InitialScanContent(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            PrimaryButton(
+            AppButton(
                 text = "Scan for Duplicates",
                 onClick = onStartScan
             )
@@ -400,18 +381,11 @@ private fun NoDuplicatesContent(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            TextButton(onClick = onRescan) {
-                Icon(
-                    imageVector = Icons.Filled.Refresh,
-                    contentDescription = null,
-                    tint = AccentPrimary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Scan Again",
-                    color = AccentPrimary
-                )
-            }
+            DialogButton(
+                text = "Scan Again",
+                onClick = onRescan,
+                intent = DialogButtonIntent.Positive
+            )
         }
     }
 }
@@ -448,14 +422,10 @@ private fun ErrorContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Button(
-            onClick = onRetry,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = AccentPrimary
-            )
-        ) {
-            Text("Try Again")
-        }
+        AppButton(
+            text = "Try Again",
+            onClick = onRetry
+        )
     }
 }
 
