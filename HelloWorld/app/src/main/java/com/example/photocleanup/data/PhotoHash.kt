@@ -25,6 +25,12 @@ data class PhotoHash(
     val pHash: Long = 0,          // 64-bit pHash value (DCT-based, for confirmation)
     val edgeHash: Long = 0,       // 64-bit Sobel edge hash (brightness-invariant structure)
     val colorHistogram: String = "", // Base64-encoded RGB histogram for color pre-filter
+    // Quality metrics (0.0 = bad, 1.0 = good)
+    val sharpnessScore: Float = 0f,
+    val exposureScore: Float = 0f,
+    val noiseScore: Float = 0f,
+    val overallQuality: Float = 0f,
+    val qualityIssues: String = "",  // Comma-separated: "BLURRY,DARK"
     val fileSize: Long,           // File size in bytes
     val width: Int,               // Image width in pixels (effective, after EXIF rotation)
     val height: Int,              // Image height in pixels (effective, after EXIF rotation)
