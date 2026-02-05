@@ -6,6 +6,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -87,13 +91,46 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     ) { innerPadding ->
+                        // Smooth transition duration
+                        val transitionDuration = 300
+
                         NavHost(
                             navController = navController,
                             startDestination = BottomNavItem.Cleanup.route,
-                            modifier = if (showBottomNav) Modifier.padding(innerPadding) else Modifier
+                            modifier = if (showBottomNav) Modifier.padding(innerPadding) else Modifier,
+                            enterTransition = {
+                                slideIntoContainer(
+                                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                                    animationSpec = tween(transitionDuration)
+                                ) + fadeIn(animationSpec = tween(transitionDuration))
+                            },
+                            exitTransition = {
+                                slideOutOfContainer(
+                                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                                    animationSpec = tween(transitionDuration)
+                                ) + fadeOut(animationSpec = tween(transitionDuration))
+                            },
+                            popEnterTransition = {
+                                slideIntoContainer(
+                                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                                    animationSpec = tween(transitionDuration)
+                                ) + fadeIn(animationSpec = tween(transitionDuration))
+                            },
+                            popExitTransition = {
+                                slideOutOfContainer(
+                                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                                    animationSpec = tween(transitionDuration)
+                                ) + fadeOut(animationSpec = tween(transitionDuration))
+                            }
                         ) {
-                            // Cleanup tab - Menu screen
-                            composable(BottomNavItem.Cleanup.route) {
+                            // Cleanup tab - Menu screen (fade only for tab switches)
+                            composable(
+                                route = BottomNavItem.Cleanup.route,
+                                enterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
+                                exitTransition = { fadeOut(animationSpec = tween(transitionDuration)) },
+                                popEnterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
+                                popExitTransition = { fadeOut(animationSpec = tween(transitionDuration)) }
+                            ) {
                                 MenuScreen(
                                     viewModel = menuViewModel,
                                     onNavigateToSwipe = { filter ->
@@ -112,16 +149,28 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
 
-                            // Duplicates tab
-                            composable(BottomNavItem.Duplicates.route) {
+                            // Duplicates tab (fade only for tab switches)
+                            composable(
+                                route = BottomNavItem.Duplicates.route,
+                                enterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
+                                exitTransition = { fadeOut(animationSpec = tween(transitionDuration)) },
+                                popEnterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
+                                popExitTransition = { fadeOut(animationSpec = tween(transitionDuration)) }
+                            ) {
                                 val duplicatesViewModel: DuplicatesViewModel = viewModel()
                                 DuplicatesScreen(
                                     viewModel = duplicatesViewModel
                                 )
                             }
 
-                            // Settings tab
-                            composable(BottomNavItem.Settings.route) {
+                            // Settings tab (fade only for tab switches)
+                            composable(
+                                route = BottomNavItem.Settings.route,
+                                enterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
+                                exitTransition = { fadeOut(animationSpec = tween(transitionDuration)) },
+                                popEnterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
+                                popExitTransition = { fadeOut(animationSpec = tween(transitionDuration)) }
+                            ) {
                                 SettingsTabScreen(
                                     viewModel = photoViewModel
                                 )
