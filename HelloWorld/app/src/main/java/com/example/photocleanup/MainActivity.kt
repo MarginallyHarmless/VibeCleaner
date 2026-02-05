@@ -31,12 +31,10 @@ import com.example.photocleanup.ui.navigation.BottomNavItem
 import com.example.photocleanup.ui.screens.MainScreen
 import com.example.photocleanup.ui.screens.MenuScreen
 import com.example.photocleanup.ui.screens.SettingsTabScreen
-import com.example.photocleanup.ui.screens.DuplicatesScreen
-import com.example.photocleanup.ui.screens.LowQualityScreen
+import com.example.photocleanup.ui.screens.PhotoScannerScreen
 import com.example.photocleanup.ui.screens.ToDeleteScreen
 import com.example.photocleanup.ui.theme.CleanMyPhotosTheme
-import com.example.photocleanup.viewmodel.DuplicatesViewModel
-import com.example.photocleanup.viewmodel.LowQualityViewModel
+import com.example.photocleanup.viewmodel.PhotoScannerViewModel
 import com.example.photocleanup.viewmodel.MenuViewModel
 import com.example.photocleanup.viewmodel.PhotoViewModel
 import com.example.photocleanup.viewmodel.ToDeleteViewModel
@@ -66,8 +64,7 @@ class MainActivity : ComponentActivity() {
                     // Routes where bottom nav should be visible
                     val bottomNavRoutes = listOf(
                         BottomNavItem.Cleanup.route,
-                        BottomNavItem.Duplicates.route,
-                        BottomNavItem.LowQuality.route,
+                        BottomNavItem.PhotoScanner.route,
                         BottomNavItem.Settings.route
                     )
                     val showBottomNav = currentRoute in bottomNavRoutes
@@ -152,31 +149,17 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
 
-                            // Duplicates tab (fade only for tab switches)
+                            // Photo Scanner tab (fade only for tab switches)
                             composable(
-                                route = BottomNavItem.Duplicates.route,
+                                route = BottomNavItem.PhotoScanner.route,
                                 enterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
                                 exitTransition = { fadeOut(animationSpec = tween(transitionDuration)) },
                                 popEnterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
                                 popExitTransition = { fadeOut(animationSpec = tween(transitionDuration)) }
                             ) {
-                                val duplicatesViewModel: DuplicatesViewModel = viewModel()
-                                DuplicatesScreen(
-                                    viewModel = duplicatesViewModel
-                                )
-                            }
-
-                            // Low Quality tab (fade only for tab switches)
-                            composable(
-                                route = BottomNavItem.LowQuality.route,
-                                enterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
-                                exitTransition = { fadeOut(animationSpec = tween(transitionDuration)) },
-                                popEnterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
-                                popExitTransition = { fadeOut(animationSpec = tween(transitionDuration)) }
-                            ) {
-                                val lowQualityViewModel: LowQualityViewModel = viewModel()
-                                LowQualityScreen(
-                                    viewModel = lowQualityViewModel
+                                val photoScannerViewModel: PhotoScannerViewModel = viewModel()
+                                PhotoScannerScreen(
+                                    viewModel = photoScannerViewModel
                                 )
                             }
 
