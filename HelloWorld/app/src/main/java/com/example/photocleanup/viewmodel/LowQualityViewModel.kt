@@ -131,6 +131,21 @@ class LowQualityViewModel(application: Application) : AndroidViewModel(applicati
     fun getSelectedCount(): Int = _selectedUris.value.size
 
     /**
+     * Start a duplicate/quality scan.
+     * Uses the same scan worker as duplicates (it computes quality during scan).
+     */
+    fun startScan() {
+        scanManager.startScan()
+    }
+
+    /**
+     * Cancel any running scan.
+     */
+    fun cancelScan() {
+        scanManager.cancelScan()
+    }
+
+    /**
      * Called after photos have been deleted (via system delete dialog).
      * Removes deleted URIs from database and clears selection.
      */
