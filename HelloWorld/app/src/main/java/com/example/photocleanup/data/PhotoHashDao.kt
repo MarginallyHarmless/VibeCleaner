@@ -56,4 +56,29 @@ interface PhotoHashDao {
      */
     @Query("SELECT uri FROM photo_hashes")
     suspend fun getAllUris(): List<String>
+
+    // ==================== Low Quality Photo Queries ====================
+
+    /**
+     * Get all photos that have quality issues, sorted by worst quality first.
+     * Returns a Flow for reactive updates when quality data changes.
+     * Photos with qualityIssues != '' have at least one detected issue.
+     */
+    @Query("SELECT * FROM photo_hashes WHERE qualityIssues != '' ORDER BY overallQuality ASC")
+    fun getLowQualityPhotos(): Flow<List<PhotoHash>>
+
+    /**
+     * Get the count of photos with quality issues.
+     * Returns a Flow for reactive updates (e.g., for displaying badge counts).
+     */
+    @Query("SELECT COUNT(*) FROM photo_hashes WHERE qualityIssues != ''")
+    fun getLowQualityCount(): Flow<Int>
+
+    /**
+     * One-shot query to get all low quality photos.
+     * Useful for non-reactive contexts where you just need the current list once.
+     * Sorted by worst quality first (lowest overallQuality score).
+     */
+    @Query("SELECT * FROM photo_hashes WHERE qualityIssues != '' ORDER BY overallQuality ASC")
+    suspend fun getLowQualityPhotosOnce(): List<PhotoHash>
 }
