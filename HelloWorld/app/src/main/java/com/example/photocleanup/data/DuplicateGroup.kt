@@ -52,5 +52,6 @@ data class DuplicatePhotoInfo(
     val fileSize: Long = 0,
     val width: Int = 0,
     val height: Int = 0,
-    val bucketName: String = ""
+    val bucketName: String = "",
+    val dateAdded: Long = 0
 )

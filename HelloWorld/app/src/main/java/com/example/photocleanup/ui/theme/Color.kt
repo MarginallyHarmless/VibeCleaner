@@ -21,6 +21,7 @@ val AccentPrimaryDim = Color(0xFF8B3D3D)    // Dim coral for containers
 // Action Colors
 val ActionKeep = Color(0xFF51D88A)          // Mint green - swipe right/keep
 val ActionDelete = Color(0xFFFF6B6B)        // Coral - swipe left/delete
+val ActionRefresh = Color(0xFF26A69A)       // Teal - refresh/rescan actions
 
 // Text Colors
 val TextPrimary = Color(0xFFFFFFFF)         // White - main text

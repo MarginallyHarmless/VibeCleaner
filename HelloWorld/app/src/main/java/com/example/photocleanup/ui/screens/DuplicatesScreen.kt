@@ -29,14 +29,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,7 +43,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -61,7 +57,7 @@ import com.example.photocleanup.ui.components.ScanStatusCard
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.AccentPrimaryDim
 import com.example.photocleanup.ui.theme.ActionDelete
-import com.example.photocleanup.ui.theme.DarkSurface
+import com.example.photocleanup.ui.theme.ActionRefresh
 import com.example.photocleanup.ui.theme.TextSecondary
 import com.example.photocleanup.viewmodel.DuplicatesViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -199,44 +195,57 @@ fun DuplicatesScreen(
                             groups = duplicateGroups,
                             selectedPhotoIds = selectedPhotoIds,
                             onPhotoSelect = { viewModel.togglePhotoSelection(it) },
-                            onMarkAsKept = { groupId, photoId ->
-                                viewModel.markAsKept(groupId, photoId)
-                            },
-                            onDeleteUnkept = { groupId ->
-                                activity?.let { viewModel.deleteUnkeptInGroup(it, groupId) }
-                            },
                             modifier = Modifier.weight(1f)
                         )
                     }
                 }
-
-                // Selection action bar
-                if (selectedPhotoIds.isNotEmpty()) {
-                    SelectionActionBar(
-                        selectedCount = selectedPhotoIds.size,
-                        onClearSelection = { viewModel.clearSelection() },
-                        onSelectAllUnkept = { viewModel.selectAllUnkept() },
-                        onDeleteSelected = {
-                            activity?.let { viewModel.deleteSelectedPhotos(it) }
-                        }
-                    )
-                }
             }
 
-            // Rescan FAB (shown when results exist)
+            // Bottom action row (delete button + refresh FAB)
             if (groupCount > 0 && scanState !is ScanState.Scanning && scanState !is ScanState.Queued) {
-                FloatingActionButton(
-                    onClick = { viewModel.startScan() },
+                Row(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(16.dp),
-                    containerColor = AccentPrimary
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Rescan",
-                        tint = Color.White
-                    )
+                    // Delete button (only shown when photos are selected)
+                    if (selectedPhotoIds.isNotEmpty()) {
+                        Button(
+                            onClick = {
+                                activity?.let { viewModel.deleteSelectedPhotos(it) }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = AccentPrimary,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Delete ${selectedPhotoIds.size} photos",
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                    }
+
+                    // Refresh FAB (teal)
+                    FloatingActionButton(
+                        onClick = { viewModel.startScan() },
+                        containerColor = ActionRefresh
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Rescan",
+                            tint = Color.White
+                        )
+                    }
                 }
             }
         }
@@ -417,8 +426,6 @@ private fun DuplicateGroupsList(
     groups: List<com.example.photocleanup.data.DuplicateGroupWithPhotos>,
     selectedPhotoIds: Set<Long>,
     onPhotoSelect: (Long) -> Unit,
-    onMarkAsKept: (String, Long) -> Unit,
-    onDeleteUnkept: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Remember scroll state to preserve position across recompositions
@@ -436,71 +443,13 @@ private fun DuplicateGroupsList(
             DuplicateGroupCard(
                 group = group,
                 selectedPhotoIds = selectedPhotoIds,
-                onPhotoSelect = onPhotoSelect,
-                onMarkAsKept = onMarkAsKept,
-                onDeleteUnkept = onDeleteUnkept
+                onPhotoSelect = onPhotoSelect
             )
         }
 
-        // Bottom padding
+        // Bottom padding for FAB
         item {
             Spacer(modifier = Modifier.height(80.dp))
-        }
-    }
-}
-
-@Composable
-private fun SelectionActionBar(
-    selectedCount: Int,
-    onClearSelection: () -> Unit,
-    onSelectAllUnkept: () -> Unit,
-    onDeleteSelected: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            .background(DarkSurface)
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "$selectedCount selected",
-            style = MaterialTheme.typography.titleMedium,
-            color = Color.White,
-            modifier = Modifier.weight(1f)
-        )
-
-        IconButton(onClick = onSelectAllUnkept) {
-            Icon(
-                imageVector = Icons.Filled.SelectAll,
-                contentDescription = "Select all duplicates",
-                tint = TextSecondary
-            )
-        }
-
-        IconButton(onClick = onClearSelection) {
-            Icon(
-                imageVector = Icons.Filled.Refresh,
-                contentDescription = "Clear selection",
-                tint = TextSecondary
-            )
-        }
-
-        Button(
-            onClick = onDeleteSelected,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = ActionDelete
-            )
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Delete,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text("Delete")
         }
     }
 }

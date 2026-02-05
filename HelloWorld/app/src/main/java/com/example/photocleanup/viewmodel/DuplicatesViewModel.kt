@@ -111,7 +111,8 @@ class DuplicatesViewModel(application: Application) : AndroidViewModel(applicati
                             fileSize = hash?.fileSize ?: 0,
                             width = hash?.width ?: 0,
                             height = hash?.height ?: 0,
-                            bucketName = hash?.bucketName ?: ""
+                            bucketName = hash?.bucketName ?: "",
+                            dateAdded = hash?.dateAdded ?: 0
                         )
                     }
                     DuplicateGroupWithPhotos(
@@ -120,6 +121,10 @@ class DuplicatesViewModel(application: Application) : AndroidViewModel(applicati
                         createdAt = entries.firstOrNull()?.createdAt ?: 0
                     )
                 }.filter { it.photos.size >= 2 } // Only show groups with 2+ photos
+                    .sortedByDescending { group ->
+                        // Sort by most recent photo in the group (newest first)
+                        group.photos.maxOfOrNull { it.dateAdded } ?: 0L
+                    }
 
                 _duplicateGroups.value = groups
                 _groupCount.value = groups.size
