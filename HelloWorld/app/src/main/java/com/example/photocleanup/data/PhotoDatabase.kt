@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ReviewedPhoto::class, PhotoHash::class, DuplicateGroup::class],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class PhotoDatabase : RoomDatabase() {
@@ -103,6 +103,25 @@ abstract class PhotoDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration from version 6 to 7.
+         * Adds quality score columns for low-quality photo detection feature.
+         * - sharpnessScore: Measures image sharpness using Laplacian variance
+         * - exposureScore: Measures proper exposure (not too dark/bright)
+         * - noiseScore: Measures image noise levels
+         * - overallQuality: Combined quality score (0.0-1.0)
+         * - qualityIssues: Comma-separated list of detected issues
+         */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE photo_hashes ADD COLUMN sharpnessScore REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE photo_hashes ADD COLUMN exposureScore REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE photo_hashes ADD COLUMN noiseScore REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE photo_hashes ADD COLUMN overallQuality REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE photo_hashes ADD COLUMN qualityIssues TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context): PhotoDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -110,7 +129,7 @@ abstract class PhotoDatabase : RoomDatabase() {
                     PhotoDatabase::class.java,
                     "photo_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .build()
                 INSTANCE = instance
                 instance
