@@ -228,6 +228,7 @@ fun PhotoScannerScreen(
                             selectedUris = selectedLowQualityUris,
                             onToggleSelection = { viewModel.toggleLowQualitySelection(it) },
                             onLongPressPhoto = { uri -> fullscreenPhotoUri = uri },
+                            onLongPressRelease = { fullscreenPhotoUri = null },
                             onStartScan = { viewModel.startScan() },
                             modifier = Modifier.weight(1f)
                         )
@@ -442,6 +443,7 @@ private fun LowQualityContent(
     selectedUris: Set<String>,
     onToggleSelection: (String) -> Unit,
     onLongPressPhoto: (String) -> Unit,
+    onLongPressRelease: () -> Unit,
     onStartScan: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -473,6 +475,7 @@ private fun LowQualityContent(
                 selectedUris = selectedUris,
                 onToggleSelection = onToggleSelection,
                 onLongPressPhoto = onLongPressPhoto,
+                onLongPressRelease = onLongPressRelease,
                 modifier = modifier
             )
         }
@@ -680,6 +683,7 @@ private fun LowQualityPhotoGrid(
     selectedUris: Set<String>,
     onToggleSelection: (String) -> Unit,
     onLongPressPhoto: (String) -> Unit,
+    onLongPressRelease: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyVerticalGrid(
@@ -697,7 +701,8 @@ private fun LowQualityPhotoGrid(
                 photo = photo,
                 isSelected = photo.uri in selectedUris,
                 onToggleSelection = { onToggleSelection(photo.uri) },
-                onLongPress = { onLongPressPhoto(photo.uri) }
+                onLongPress = { onLongPressPhoto(photo.uri) },
+                onLongPressRelease = onLongPressRelease
             )
         }
     }
