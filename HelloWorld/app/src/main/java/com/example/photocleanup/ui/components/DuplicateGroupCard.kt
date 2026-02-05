@@ -2,7 +2,9 @@ package com.example.photocleanup.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,12 +25,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -40,6 +45,9 @@ import com.example.photocleanup.data.DuplicatePhotoInfo
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.DarkSurface
 import com.example.photocleanup.ui.theme.TextSecondary
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Card component that displays a group of duplicate photos.
@@ -52,6 +60,8 @@ fun DuplicateGroupCard(
     group: DuplicateGroupWithPhotos,
     selectedPhotoIds: Set<Long>,
     onPhotoSelect: (Long) -> Unit,
+    onLongPressPhoto: (String) -> Unit,
+    onLongPressRelease: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val selectedInGroup = group.photos.count { it.id in selectedPhotoIds }
@@ -97,6 +107,8 @@ fun DuplicateGroupCard(
                     photo = photo,
                     isSelected = photo.id in selectedPhotoIds,
                     onSelect = { onPhotoSelect(photo.id) },
+                    onLongPressStart = { onLongPressPhoto(photo.uri) },
+                    onLongPressEnd = onLongPressRelease,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -118,8 +130,13 @@ private fun DuplicatePhotoThumbnail(
     photo: DuplicatePhotoInfo,
     isSelected: Boolean,
     onSelect: () -> Unit,
+    onLongPressStart: () -> Unit,
+    onLongPressEnd: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    val viewConfiguration = LocalViewConfiguration.current
+
     Box(
         modifier = modifier
             .aspectRatio(1f)
@@ -135,7 +152,33 @@ private fun DuplicatePhotoThumbnail(
                     Modifier
                 }
             )
-            .clickable(onClick = onSelect)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown()
+                    var longPressTriggered = false
+
+                    // Start a coroutine to trigger long press after timeout
+                    val longPressJob = coroutineScope.launch {
+                        delay(viewConfiguration.longPressTimeoutMillis)
+                        longPressTriggered = true
+                        onLongPressStart()
+                    }
+
+                    // Wait for the finger to lift or cancel
+                    val up = waitForUpOrCancellation()
+
+                    // Cancel the long press job if still running
+                    longPressJob.cancel()
+
+                    if (longPressTriggered) {
+                        // Long press was triggered, now releasing
+                        onLongPressEnd()
+                    } else if (up != null) {
+                        // Short tap - trigger selection
+                        onSelect()
+                    }
+                }
+            }
     ) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)

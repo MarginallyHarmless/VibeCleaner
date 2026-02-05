@@ -41,6 +41,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -48,8 +51,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.photocleanup.data.ScanState
 import com.example.photocleanup.ui.components.DuplicateGroupCard
 import com.example.photocleanup.ui.components.PrimaryButton
@@ -106,6 +112,9 @@ fun DuplicatesScreen(
             deletePermissionLauncher.launch(intentSenderRequest)
         }
     }
+
+    // State for fullscreen photo preview (long-press)
+    var fullscreenPhotoUri by remember { mutableStateOf<String?>(null) }
 
     if (!permissionState.status.isGranted) {
         PermissionScreen(
@@ -195,6 +204,8 @@ fun DuplicatesScreen(
                             groups = duplicateGroups,
                             selectedPhotoIds = selectedPhotoIds,
                             onPhotoSelect = { viewModel.togglePhotoSelection(it) },
+                            onLongPressPhoto = { uri -> fullscreenPhotoUri = uri },
+                            onLongPressRelease = { fullscreenPhotoUri = null },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -248,7 +259,34 @@ fun DuplicatesScreen(
                     }
                 }
             }
+
+            // Fullscreen photo overlay (shown when long-pressing a photo)
+            fullscreenPhotoUri?.let { uri ->
+                FullscreenPhotoOverlay(photoUri = uri)
+            }
         }
+    }
+}
+
+@Composable
+private fun FullscreenPhotoOverlay(
+    photoUri: String
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.95f)),
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(photoUri)
+                .crossfade(true)
+                .build(),
+            contentDescription = "Fullscreen preview",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 
@@ -426,6 +464,8 @@ private fun DuplicateGroupsList(
     groups: List<com.example.photocleanup.data.DuplicateGroupWithPhotos>,
     selectedPhotoIds: Set<Long>,
     onPhotoSelect: (Long) -> Unit,
+    onLongPressPhoto: (String) -> Unit,
+    onLongPressRelease: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Remember scroll state to preserve position across recompositions
@@ -443,7 +483,9 @@ private fun DuplicateGroupsList(
             DuplicateGroupCard(
                 group = group,
                 selectedPhotoIds = selectedPhotoIds,
-                onPhotoSelect = onPhotoSelect
+                onPhotoSelect = onPhotoSelect,
+                onLongPressPhoto = onLongPressPhoto,
+                onLongPressRelease = onLongPressRelease
             )
         }
 
