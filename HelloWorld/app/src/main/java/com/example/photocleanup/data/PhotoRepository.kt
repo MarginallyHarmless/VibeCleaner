@@ -60,7 +60,8 @@ class PhotoRepository(
         val folders = mutableMapOf<Long, Pair<String, Int>>()
         val projection = arrayOf(
             MediaStore.Images.Media.BUCKET_ID,
-            MediaStore.Images.Media.BUCKET_DISPLAY_NAME
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+            MediaStore.Images.Media.RELATIVE_PATH
         )
 
         context.contentResolver.query(
@@ -72,10 +73,30 @@ class PhotoRepository(
         )?.use { cursor ->
             val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
             val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+            val relativePathColumn = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
 
             while (cursor.moveToNext()) {
                 val bucketId = cursor.getLong(bucketIdColumn)
-                val bucketName = cursor.getString(bucketNameColumn) ?: "Unknown"
+                var bucketName = cursor.getString(bucketNameColumn)
+
+                // If bucket name is null, empty, or looks like a bucket ID (all digits),
+                // try to extract folder name from relative path
+                if (bucketName.isNullOrBlank() || bucketName.all { it.isDigit() }) {
+                    if (relativePathColumn >= 0) {
+                        val relativePath = cursor.getString(relativePathColumn)
+                        // Relative path is like "DCIM/Camera/" or "Pictures/Screenshots/"
+                        // Extract the last folder name
+                        bucketName = relativePath
+                            ?.trimEnd('/')
+                            ?.substringAfterLast('/')
+                            ?.takeIf { it.isNotBlank() && !it.all { c -> c.isDigit() } }
+                    }
+                }
+
+                // Skip folders that still have invalid names (numeric-only or blank)
+                if (bucketName.isNullOrBlank() || bucketName.all { it.isDigit() }) {
+                    continue
+                }
 
                 val existing = folders[bucketId]
                 if (existing != null) {
@@ -479,7 +500,8 @@ class PhotoRepository(
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.BUCKET_ID,
-            MediaStore.Images.Media.BUCKET_DISPLAY_NAME
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+            MediaStore.Images.Media.RELATIVE_PATH
         )
 
         context.contentResolver.query(
@@ -492,11 +514,30 @@ class PhotoRepository(
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
             val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+            val relativePathColumn = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
 
             while (cursor.moveToNext()) {
                 val photoId = cursor.getLong(idColumn)
                 val bucketId = cursor.getLong(bucketIdColumn)
-                val bucketName = cursor.getString(bucketNameColumn) ?: "Unknown"
+                var bucketName = cursor.getString(bucketNameColumn)
+
+                // If bucket name is null, empty, or looks like a bucket ID (all digits),
+                // try to extract folder name from relative path
+                if (bucketName.isNullOrBlank() || bucketName.all { it.isDigit() }) {
+                    if (relativePathColumn >= 0) {
+                        val relativePath = cursor.getString(relativePathColumn)
+                        bucketName = relativePath
+                            ?.trimEnd('/')
+                            ?.substringAfterLast('/')
+                            ?.takeIf { it.isNotBlank() && !it.all { c -> c.isDigit() } }
+                    }
+                }
+
+                // Skip photos with invalid album names
+                if (bucketName.isNullOrBlank() || bucketName.all { it.isDigit() }) {
+                    continue
+                }
+
                 val uri = ContentUris.withAppendedId(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     photoId

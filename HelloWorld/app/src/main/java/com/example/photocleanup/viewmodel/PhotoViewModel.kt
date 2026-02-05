@@ -70,7 +70,17 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
 
     private val contentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) {
-            loadPhotos()
+            // Don't reload while a move operation is in progress or pending permission
+            // This prevents the photo from disappearing when tapping an album
+            val state = _uiState.value
+            if (!state.isMovingPhoto && state.moveIntentSender == null && state.pendingMoveAlbum == null) {
+                // Reload using the same filter that was originally applied
+                if (state.menuFilter != null) {
+                    loadPhotosWithMenuFilter(state.menuFilter)
+                } else {
+                    loadPhotos()
+                }
+            }
         }
     }
 

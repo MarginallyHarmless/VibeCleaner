@@ -43,6 +43,7 @@ import coil.size.Size
 import com.example.photocleanup.data.DuplicateGroupWithPhotos
 import com.example.photocleanup.data.DuplicatePhotoInfo
 import com.example.photocleanup.ui.theme.AccentPrimary
+import com.example.photocleanup.ui.theme.ActionDelete
 import com.example.photocleanup.ui.theme.DarkSurface
 import com.example.photocleanup.ui.theme.TextSecondary
 import kotlinx.coroutines.Job
@@ -88,7 +89,7 @@ fun DuplicateGroupCard(
                 Text(
                     text = "$selectedInGroup selected",
                     style = MaterialTheme.typography.bodySmall,
-                    color = AccentPrimary
+                    color = ActionDelete
                 )
             }
         }
@@ -145,7 +146,7 @@ private fun DuplicatePhotoThumbnail(
                 if (isSelected) {
                     Modifier.border(
                         width = 3.dp,
-                        color = AccentPrimary,
+                        color = ActionDelete,
                         shape = RoundedCornerShape(8.dp)
                     )
                 } else {
@@ -206,7 +207,7 @@ private fun DuplicatePhotoThumbnail(
                     .align(Alignment.TopEnd)
                     .padding(6.dp)
                     .size(24.dp)
-                    .background(AccentPrimary, CircleShape),
+                    .background(ActionDelete, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
