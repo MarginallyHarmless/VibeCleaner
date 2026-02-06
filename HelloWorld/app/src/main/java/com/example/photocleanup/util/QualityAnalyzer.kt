@@ -42,7 +42,7 @@ object QualityAnalyzer {
     }
 
     // Sharpness thresholds
-    private const val SHARPNESS_THRESHOLD = 0.55f        // Below = blurry
+    private const val SHARPNESS_THRESHOLD = 0.60f        // Below = blurry
 
     // Tiled Laplacian constants
     private const val QUALITY_GRID_SIZE = 4              // 4x4 grid of tiles
