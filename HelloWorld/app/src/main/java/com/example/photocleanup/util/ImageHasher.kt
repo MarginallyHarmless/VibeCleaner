@@ -1592,7 +1592,7 @@ object ImageHasher {
      *
      * @param context Android context for ContentResolver access
      * @param uri Content URI of the image
-     * @return 64x64 Bitmap or null if loading failed
+     * @return 256x256 Bitmap or null if loading failed
      */
     fun loadBitmapForQuality(context: Context, uri: Uri): Bitmap? {
         return try {
@@ -1602,13 +1602,14 @@ object ImageHasher {
                 }
                 BitmapFactory.decodeStream(inputStream, null, options)
 
-                val targetSize = 64
+                val targetSize = 256
                 options.inSampleSize = calculateInSampleSize(options, targetSize, targetSize)
                 options.inJustDecodeBounds = false
+                options.inPreferredConfig = Bitmap.Config.RGB_565
 
                 context.contentResolver.openInputStream(uri)?.use { stream2 ->
                     BitmapFactory.decodeStream(stream2, null, options)?.let { bitmap ->
-                        Bitmap.createScaledBitmap(bitmap, 64, 64, true).also {
+                        Bitmap.createScaledBitmap(bitmap, 256, 256, true).also {
                             if (it != bitmap) bitmap.recycle()
                         }
                     }

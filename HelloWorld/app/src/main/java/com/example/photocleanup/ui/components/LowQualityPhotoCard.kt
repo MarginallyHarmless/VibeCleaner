@@ -48,6 +48,7 @@ fun LowQualityPhotoCard(
     val issueLabel = photo.qualityIssues.split(",").firstOrNull()?.let { issue ->
         when (issue) {
             "BLURRY" -> "Blurry"
+            "MOTION_BLUR" -> "Motion Blur"
             "VERY_DARK" -> "Black"
             "VERY_BRIGHT" -> "White"
             "UNDEREXPOSED" -> "Too Dark"

@@ -64,7 +64,7 @@ interface PhotoHashDao {
      * Returns a Flow for reactive updates when quality data changes.
      * Photos with qualityIssues != '' have at least one detected issue.
      */
-    @Query("SELECT * FROM photo_hashes WHERE qualityIssues != '' ORDER BY overallQuality ASC")
+    @Query("SELECT * FROM photo_hashes WHERE qualityIssues != '' ORDER BY dateAdded DESC")
     fun getLowQualityPhotos(): Flow<List<PhotoHash>>
 
     /**
@@ -77,8 +77,8 @@ interface PhotoHashDao {
     /**
      * One-shot query to get all low quality photos.
      * Useful for non-reactive contexts where you just need the current list once.
-     * Sorted by worst quality first (lowest overallQuality score).
+     * Sorted by most recent first.
      */
-    @Query("SELECT * FROM photo_hashes WHERE qualityIssues != '' ORDER BY overallQuality ASC")
+    @Query("SELECT * FROM photo_hashes WHERE qualityIssues != '' ORDER BY dateAdded DESC")
     suspend fun getLowQualityPhotosOnce(): List<PhotoHash>
 }

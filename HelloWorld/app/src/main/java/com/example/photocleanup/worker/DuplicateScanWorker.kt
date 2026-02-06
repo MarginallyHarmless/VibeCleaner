@@ -65,7 +65,8 @@ class DuplicateScanWorker(
         // Version 12: Better screenshot detection (pure white/black), stricter underexposed, relaxed blur
         // Version 13: More sensitive blur detection (0.28), improved screenshot detection (35% solid OR <20 colors OR combo)
         // Version 14: Even more sensitive blur detection (0.38)
-        const val CURRENT_ALGORITHM_VERSION = 14
+        // Version 15: Tiled Laplacian (256x256, 4x4 grid), motion blur detection, edge density tiebreaker
+        const val CURRENT_ALGORITHM_VERSION = 15
 
         // Progress data keys
         const val KEY_PROGRESS = "progress"
