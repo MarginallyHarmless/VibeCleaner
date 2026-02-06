@@ -42,7 +42,8 @@ object QualityAnalyzer {
     }
 
     // Sharpness thresholds
-    private const val SHARPNESS_THRESHOLD = 0.60f        // Below = blurry
+    private const val SHARPNESS_THRESHOLD = 0.60f        // Below = blurry (top-quartile score)
+    private const val CENTER_SHARPNESS_THRESHOLD = 0.40f // Below = center is out of focus (catches misfocused photos)
 
     // Tiled Laplacian constants
     private const val QUALITY_GRID_SIZE = 4              // 4x4 grid of tiles
@@ -67,6 +68,7 @@ object QualityAnalyzer {
      */
     data class SharpnessResult(
         val score: Float,            // Top-quartile sharpness score (0-1)
+        val centerScore: Float,      // Average sharpness of center 4 tiles (0-1)
         val edgeDensity: Float,      // Fraction of pixels that are edges (0-1)
         val maxTileVariance: Double,  // Highest single tile variance (for debugging)
         val meanTileVariance: Double  // Average tile variance (for debugging)
@@ -163,6 +165,15 @@ object QualityAnalyzer {
                         issues.add(QualityIssue.BLURRY)
                     }
                 }
+            } else if (sharpnessResult.centerScore < CENTER_SHARPNESS_THRESHOLD) {
+                // Overall top-quartile passed (edges are sharp), but center is blurry.
+                // This catches misfocused photos where autofocus locked on background/edges
+                // instead of the subject in the center of the frame.
+                if (DEBUG) {
+                    android.util.Log.d("QualityAnalyzer",
+                        "Center blur: overall=$sharpness passed, but centerScore=${sharpnessResult.centerScore} < $CENTER_SHARPNESS_THRESHOLD")
+                }
+                issues.add(QualityIssue.BLURRY)
             }
         }
 
@@ -185,7 +196,8 @@ object QualityAnalyzer {
 
         if (DEBUG) {
             android.util.Log.d("QualityAnalyzer",
-                "sharpness=${"%.3f".format(sharpness)}, edgeDensity=${"%.3f".format(sharpnessResult.edgeDensity)}, " +
+                "sharpness=${"%.3f".format(sharpness)}, centerScore=${"%.3f".format(sharpnessResult.centerScore)}, " +
+                "edgeDensity=${"%.3f".format(sharpnessResult.edgeDensity)}, " +
                 "maxTileVar=${"%.1f".format(sharpnessResult.maxTileVariance)}, meanTileVar=${"%.1f".format(sharpnessResult.meanTileVariance)}, " +
                 "exposure=${"%.2f".format(exposure)}, brightness=${"%.2f".format(avgBrightness)}, " +
                 "contrast=${"%.2f".format(contrast)}, issues=$issues")
@@ -212,19 +224,27 @@ object QualityAnalyzer {
      * - Top quartile: 4 tiles must be sharp to pass, robust against both failure modes
      *   A sharp subject typically covers 25%+ of the frame (4+ tiles)
      *
+     * Center-weighted scoring: The inner 4 tiles (positions 1,1 / 1,2 / 2,1 / 2,2)
+     * are scored separately. If a photo has sharp edges but a blurry center, it's
+     * likely misfocused — the autofocus locked onto background/edges instead of the subject.
+     *
      * Also counts edge pixels (|Laplacian| > threshold) to compute edge density,
      * used as a tiebreaker for borderline cases.
      */
     private fun computeSharpnessDetailed(lum: IntArray, width: Int, height: Int): SharpnessResult {
-        if (width < 3 || height < 3) return SharpnessResult(0.5f, 0.0f, 0.0, 0.0)
+        if (width < 3 || height < 3) return SharpnessResult(0.5f, 0.5f, 0.0f, 0.0, 0.0)
 
         val tileW = width / QUALITY_GRID_SIZE
         val tileH = height / QUALITY_GRID_SIZE
-        if (tileW < 3 || tileH < 3) return SharpnessResult(0.5f, 0.0f, 0.0, 0.0)
+        if (tileW < 3 || tileH < 3) return SharpnessResult(0.5f, 0.5f, 0.0f, 0.0, 0.0)
 
         val tileVariances = mutableListOf<Double>()
+        val centerTileVariances = mutableListOf<Double>()
         var totalEdgePixels = 0
         var totalPixelsChecked = 0
+
+        // Center tiles in a 4x4 grid are at positions (1,1), (1,2), (2,1), (2,2)
+        val centerRange = 1..2
 
         for (ty in 0 until QUALITY_GRID_SIZE) {
             for (tx in 0 until QUALITY_GRID_SIZE) {
@@ -264,11 +284,16 @@ object QualityAnalyzer {
                     val mean = sum / count
                     val variance = (sumSq / count) - (mean * mean)
                     tileVariances.add(variance)
+
+                    // Track center tile variances separately
+                    if (tx in centerRange && ty in centerRange) {
+                        centerTileVariances.add(variance)
+                    }
                 }
             }
         }
 
-        if (tileVariances.isEmpty()) return SharpnessResult(0.5f, 0.0f, 0.0, 0.0)
+        if (tileVariances.isEmpty()) return SharpnessResult(0.5f, 0.5f, 0.0f, 0.0, 0.0)
 
         // Sort descending so best tiles are first
         tileVariances.sortDescending()
@@ -284,18 +309,33 @@ object QualityAnalyzer {
         }
         val score = (topQuartileSum / topCount).toFloat()
 
+        // Center score: average of center 4 tiles' normalized scores
+        val centerScore = if (centerTileVariances.isNotEmpty()) {
+            var centerSum = 0.0
+            for (v in centerTileVariances) {
+                centerSum += (sqrt(v) / TILE_NORMALIZATION_DIVISOR).coerceIn(0.0, 1.0)
+            }
+            (centerSum / centerTileVariances.size).toFloat()
+        } else {
+            score // fallback to overall score if no center tiles
+        }
+
         val edgeDensity = if (totalPixelsChecked > 0) {
             totalEdgePixels.toFloat() / totalPixelsChecked
         } else 0f
 
         if (DEBUG) {
             val tileScores = tileVariances.map { "%.1f".format(it) }
+            val centerScores = centerTileVariances.map { "%.1f".format(it) }
             android.util.Log.d("QualityAnalyzer",
-                "Tile variances (sorted): $tileScores, topQ=${"%.3f".format(score)}, edgeDensity=${"%.3f".format(edgeDensity)}")
+                "Tile variances (sorted): $tileScores, topQ=${"%.3f".format(score)}, " +
+                "centerTiles=$centerScores, centerScore=${"%.3f".format(centerScore)}, " +
+                "edgeDensity=${"%.3f".format(edgeDensity)}")
         }
 
         return SharpnessResult(
             score = score,
+            centerScore = centerScore,
             edgeDensity = edgeDensity,
             maxTileVariance = maxVariance,
             meanTileVariance = meanVariance
