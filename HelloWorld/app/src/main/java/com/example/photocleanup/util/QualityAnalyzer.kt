@@ -42,11 +42,11 @@ object QualityAnalyzer {
     }
 
     // Sharpness thresholds
-    private const val SHARPNESS_THRESHOLD = 0.25f        // Below = blurry
+    private const val SHARPNESS_THRESHOLD = 0.55f        // Below = blurry
 
     // Tiled Laplacian constants
     private const val QUALITY_GRID_SIZE = 4              // 4x4 grid of tiles
-    private const val TILE_NORMALIZATION_DIVISOR = 50.0  // Normalizes sqrt(variance) to 0-1 range
+    private const val TILE_NORMALIZATION_DIVISOR = 35.0  // Normalizes sqrt(variance) to 0-1 range (lower = wider score spread)
     private const val TOP_QUARTILE_COUNT = 4             // Use best 4 of 16 tiles for score
     private const val EDGE_PIXEL_THRESHOLD = 15.0        // |Laplacian| above this = edge pixel
     private const val EDGE_DENSITY_BLURRY_THRESHOLD = 0.05  // Below 5% edge pixels = likely blurry
@@ -500,12 +500,13 @@ object QualityAnalyzer {
 
         // Screenshot if:
         // 1. >35% pure white or black (solid background with text/icons), OR
-        // 2. Limited color palette (<20 unique colors) indicating UI graphics, OR
-        // 3. Moderate solid background (>25%) AND limited palette (<40 colors)
+        // 2. Limited color palette (<60 unique colors) indicating UI graphics, OR
+        // 3. Moderate solid background (>25%) AND limited palette (<120 colors)
+        // Note: thresholds scaled up from 20/40 because 256x256 preserves more detail than 64x64
         val hasSolidBackground = pureWhiteRatio > 0.35f || pureBlackRatio > 0.35f
-        val hasVeryLimitedPalette = uniqueColors < 20
+        val hasVeryLimitedPalette = uniqueColors < 60
         val hasModerateSolidAndLimitedColors =
-            (pureWhiteRatio > 0.25f || pureBlackRatio > 0.25f) && uniqueColors < 40
+            (pureWhiteRatio > 0.25f || pureBlackRatio > 0.25f) && uniqueColors < 120
 
         val isScreenshot = hasSolidBackground || hasVeryLimitedPalette || hasModerateSolidAndLimitedColors
 
