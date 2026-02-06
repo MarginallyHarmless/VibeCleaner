@@ -57,7 +57,15 @@ class DuplicateScanWorker(
         // Version 4: Added color histogram pre-filter and restored strict thresholds
         // Version 5: Added edge hash for brightness-invariant structure matching (dual-path entry)
         // Version 6: Added quality analysis (sharpness, exposure, noise detection)
-        const val CURRENT_ALGORITHM_VERSION = 6
+        // Version 7: Stricter quality thresholds to reduce false positives
+        // Version 8: Much stricter thresholds, especially for noise (was flagging textured photos)
+        // Version 9: Disabled noise detection (algorithm mistakes texture for noise)
+        // Version 10: Skip quality checks for screenshots, relaxed blur threshold
+        // Version 11: Less aggressive screenshot detection, balanced thresholds
+        // Version 12: Better screenshot detection (pure white/black), stricter underexposed, relaxed blur
+        // Version 13: More sensitive blur detection (0.28), improved screenshot detection (35% solid OR <20 colors OR combo)
+        // Version 14: Even more sensitive blur detection (0.38)
+        const val CURRENT_ALGORITHM_VERSION = 14
 
         // Progress data keys
         const val KEY_PROGRESS = "progress"

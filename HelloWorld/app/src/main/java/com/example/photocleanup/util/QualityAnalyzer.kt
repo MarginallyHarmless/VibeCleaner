@@ -25,14 +25,14 @@ object QualityAnalyzer {
         LOW_CONTRAST      // Flat, washed out
     }
 
-    // Thresholds (balanced mode - catch most issues, some false positives OK)
-    private const val SHARPNESS_THRESHOLD = 0.25f      // Below = blurry
-    private const val DARK_THRESHOLD = 0.08f           // Below = very dark
-    private const val BRIGHT_THRESHOLD = 0.92f         // Above = very bright
-    private const val UNDEREXPOSED_THRESHOLD = 0.25f   // Below = underexposed
-    private const val OVEREXPOSED_THRESHOLD = 0.75f    // Above = overexposed
-    private const val NOISE_THRESHOLD = 0.6f           // Above = noisy
-    private const val CONTRAST_THRESHOLD = 0.15f       // Below = low contrast
+    // Thresholds (tuned to catch real issues, avoid false positives)
+    private const val SHARPNESS_THRESHOLD = 0.38f      // Below = blurry (higher = catches more blur)
+    private const val DARK_THRESHOLD = 0.04f           // Below = almost black (accidental shots)
+    private const val BRIGHT_THRESHOLD = 0.96f         // Above = almost white (accidental shots)
+    private const val UNDEREXPOSED_THRESHOLD = 0.06f   // Below = extremely dark (stricter - night photos OK)
+    private const val OVEREXPOSED_THRESHOLD = 0.90f    // Above = very bright
+    private const val NOISE_THRESHOLD = 0.95f          // Above = extreme noise only (disabled anyway)
+    private const val CONTRAST_THRESHOLD = 0.06f       // Below = very flat
 
     data class QualityResult(
         val sharpnessScore: Float,
@@ -66,31 +66,38 @@ object QualityAnalyzer {
         val (exposure, avgBrightness, contrast) = computeExposure(bitmap)
         val noise = computeNoise(bitmap)
 
+        // Check if this looks like a screenshot (skip exposure checks for screenshots)
+        val isLikelyScreenshot = isScreenshot(bitmap)
+
         // Detect issues
         val issues = mutableListOf<QualityIssue>()
 
-        // Exposure issues (check first - these are most obvious)
-        when {
-            avgBrightness < DARK_THRESHOLD -> issues.add(QualityIssue.VERY_DARK)
-            avgBrightness > BRIGHT_THRESHOLD -> issues.add(QualityIssue.VERY_BRIGHT)
-            avgBrightness < UNDEREXPOSED_THRESHOLD -> issues.add(QualityIssue.UNDEREXPOSED)
-            avgBrightness > OVEREXPOSED_THRESHOLD -> issues.add(QualityIssue.OVEREXPOSED)
+        // Exposure issues - skip for screenshots (they often have white/black UI backgrounds)
+        if (!isLikelyScreenshot) {
+            when {
+                avgBrightness < DARK_THRESHOLD -> issues.add(QualityIssue.VERY_DARK)
+                avgBrightness > BRIGHT_THRESHOLD -> issues.add(QualityIssue.VERY_BRIGHT)
+                avgBrightness < UNDEREXPOSED_THRESHOLD -> issues.add(QualityIssue.UNDEREXPOSED)
+                avgBrightness > OVEREXPOSED_THRESHOLD -> issues.add(QualityIssue.OVEREXPOSED)
+            }
         }
 
-        // Sharpness (only check if not completely dark/bright)
-        if (avgBrightness in DARK_THRESHOLD..BRIGHT_THRESHOLD) {
+        // Sharpness (only check if not completely dark/bright, and not a screenshot)
+        if (!isLikelyScreenshot && avgBrightness in DARK_THRESHOLD..BRIGHT_THRESHOLD) {
             if (sharpness < SHARPNESS_THRESHOLD) {
                 issues.add(QualityIssue.BLURRY)
             }
         }
 
-        // Noise (only meaningful if image has content)
-        if (avgBrightness in DARK_THRESHOLD..BRIGHT_THRESHOLD && noise > NOISE_THRESHOLD) {
-            issues.add(QualityIssue.NOISY)
-        }
+        // Noise detection disabled - the local variance method mistakes texture/detail for noise
+        // and flags almost every photo. Would need a more sophisticated algorithm (e.g., wavelet-based)
+        // to reliably detect actual noise without false positives.
+        // if (avgBrightness in DARK_THRESHOLD..BRIGHT_THRESHOLD && noise > NOISE_THRESHOLD) {
+        //     issues.add(QualityIssue.NOISY)
+        // }
 
-        // Contrast
-        if (contrast < CONTRAST_THRESHOLD && avgBrightness in 0.2f..0.8f) {
+        // Contrast (skip for screenshots)
+        if (!isLikelyScreenshot && contrast < CONTRAST_THRESHOLD && avgBrightness in 0.2f..0.8f) {
             issues.add(QualityIssue.LOW_CONTRAST)
         }
 
@@ -263,5 +270,73 @@ object QualityAnalyzer {
         val b = Color.blue(pixel)
         // Standard luminance formula
         return ((0.299 * r) + (0.587 * g) + (0.114 * b)).toInt().coerceIn(0, 255)
+    }
+
+    /**
+     * Detect if an image is likely a screenshot based on color patterns.
+     * Screenshots typically have:
+     * - Large areas of pure white or black (UI backgrounds)
+     * - Very limited color palette compared to photos
+     */
+    private fun isScreenshot(bitmap: Bitmap): Boolean {
+        val colorCounts = mutableMapOf<Int, Int>()
+        val totalPixels = bitmap.width * bitmap.height
+        var pureWhiteCount = 0
+        var pureBlackCount = 0
+
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                val pixel = bitmap.getPixel(x, y)
+                val r = Color.red(pixel)
+                val g = Color.green(pixel)
+                val b = Color.blue(pixel)
+
+                // Count near-pure white pixels (RGB > 245)
+                if (r > 245 && g > 245 && b > 245) {
+                    pureWhiteCount++
+                }
+                // Count near-pure black pixels (RGB < 10)
+                if (r < 10 && g < 10 && b < 10) {
+                    pureBlackCount++
+                }
+
+                // Quantize for color variety check
+                val quantized = quantizeColor(pixel)
+                colorCounts[quantized] = (colorCounts[quantized] ?: 0) + 1
+            }
+        }
+
+        val pureWhiteRatio = pureWhiteCount.toFloat() / totalPixels
+        val pureBlackRatio = pureBlackCount.toFloat() / totalPixels
+        val uniqueColors = colorCounts.size
+
+        // Screenshot if:
+        // 1. >35% pure white or black (solid background with text/icons), OR
+        // 2. Limited color palette (<20 unique colors) indicating UI graphics, OR
+        // 3. Moderate solid background (>25%) AND limited palette (<40 colors)
+        val hasSolidBackground = pureWhiteRatio > 0.35f || pureBlackRatio > 0.35f
+        val hasVeryLimitedPalette = uniqueColors < 20
+        val hasModerateSolidAndLimitedColors =
+            (pureWhiteRatio > 0.25f || pureBlackRatio > 0.25f) && uniqueColors < 40
+
+        val isScreenshot = hasSolidBackground || hasVeryLimitedPalette || hasModerateSolidAndLimitedColors
+
+        if (DEBUG && isScreenshot) {
+            android.util.Log.d("QualityAnalyzer",
+                "Screenshot detected: white=$pureWhiteRatio, black=$pureBlackRatio, colors=$uniqueColors")
+        }
+
+        return isScreenshot
+    }
+
+    /**
+     * Quantize a color to reduce variations (groups similar colors together).
+     */
+    private fun quantizeColor(pixel: Int): Int {
+        // Reduce each channel from 256 to 8 levels (divide by 32)
+        val r = (Color.red(pixel) / 32) * 32
+        val g = (Color.green(pixel) / 32) * 32
+        val b = (Color.blue(pixel) / 32) * 32
+        return Color.rgb(r, g, b)
     }
 }
