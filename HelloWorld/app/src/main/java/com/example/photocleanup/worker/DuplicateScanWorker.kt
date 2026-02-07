@@ -72,7 +72,8 @@ class DuplicateScanWorker(
         // Version 19: Simplified underexposed detection — p95 highlight check only, improved dark-mode screenshot detection
         // Version 20: p99 + avgBrightness gate for underexposed
         // Version 21: Remove screenshot gate from darkness checks (p99 handles dark screenshots naturally), lower thresholds (p99<100, avg<0.25)
-        const val CURRENT_ALGORITHM_VERSION = 21
+        // Version 22: Merge VERY_DARK into UNDEREXPOSED ("Too Dark"), stricter thresholds (p99<80, avg<0.20) to avoid screenshot false positives
+        const val CURRENT_ALGORITHM_VERSION = 22
 
         // Progress data keys
         const val KEY_PROGRESS = "progress"

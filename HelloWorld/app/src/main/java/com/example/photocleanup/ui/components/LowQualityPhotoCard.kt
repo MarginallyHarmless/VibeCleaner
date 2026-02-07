@@ -49,7 +49,7 @@ fun LowQualityPhotoCard(
         when (issue) {
             "BLURRY" -> "Blurry"
             "MOTION_BLUR" -> "Motion Blur"
-            "VERY_DARK" -> "Black"
+            "VERY_DARK" -> "Too Dark"
             "VERY_BRIGHT" -> "White"
             "UNDEREXPOSED" -> "Too Dark"
             "OVEREXPOSED" -> "Overexposed"

@@ -64,18 +64,17 @@ object QualityAnalyzer {
 
     // Exposure thresholds
     private const val DARK_THRESHOLD = 0.10f           // Below = skip blur check (too dark to judge sharpness)
-    private const val VERY_DARK_THRESHOLD = 0.05f      // Below = almost entirely black (pocket shot, lens covered)
     private const val BRIGHT_THRESHOLD = 0.96f         // Above = almost white (accidental shots)
     private const val OVEREXPOSED_THRESHOLD = 0.90f    // Above = very bright
 
     // Underexposed detection: requires BOTH conditions:
-    // 1. Image is overall dark (avgBrightness < 0.25) — gates the check so normal photos are never evaluated
-    // 2. Even the brightest 1% of pixels are very dim (p99 < 100) — genuinely underexposed photos
-    //    have nothing even moderately bright; night photos with any visible subject push p99 well
-    //    above 100; dark screenshots have bright UI text/icons that push p99 above 100
-    // NOT gated by screenshot detection — the p99 check naturally handles dark screenshots
-    private const val UNDEREXPOSED_AVG_BRIGHTNESS = 0.25f  // Only check p99 if overall dark
-    private const val HIGHLIGHT_BRIGHTNESS = 100           // p99 below this = nothing is even moderately bright (~39% luminance)
+    // 1. Image is overall dark (avgBrightness < 0.20) — gates the check so normal photos are never evaluated
+    // 2. Even the brightest 1% of pixels are very dim (p99 < 80) — genuinely underexposed photos
+    //    have nothing visible; dark screenshots always have readable text/icons above luminance 80
+    // NOT gated by screenshot detection — dark photos get misidentified as screenshots
+    // (lots of near-black pixels + few quantized colors) so the gate blocks them too
+    private const val UNDEREXPOSED_AVG_BRIGHTNESS = 0.20f  // Only check p99 if overall quite dark
+    private const val HIGHLIGHT_BRIGHTNESS = 80            // p99 below this = nothing even dimly visible (~31% luminance)
 
     private const val NOISE_THRESHOLD = 0.95f          // Above = extreme noise only (disabled anyway)
     private const val CONTRAST_THRESHOLD = 0.06f       // Below = very flat
@@ -117,7 +116,7 @@ object QualityAnalyzer {
         val primaryIssue: String? get() = when (issues.firstOrNull()) {
             QualityIssue.BLURRY -> "Blurry"
             QualityIssue.MOTION_BLUR -> "Motion Blur"
-            QualityIssue.VERY_DARK -> "Black"
+            QualityIssue.VERY_DARK -> "Too Dark"
             QualityIssue.VERY_BRIGHT -> "White"
             QualityIssue.UNDEREXPOSED -> "Too Dark"
             QualityIssue.OVEREXPOSED -> "Overexposed"
@@ -168,12 +167,11 @@ object QualityAnalyzer {
         // Detect issues
         val issues = mutableListOf<QualityIssue>()
 
-        // Darkness checks — NOT screenshot-gated
-        // The p99 check naturally excludes dark screenshots (their bright UI text/icons push p99
-        // well above 100). A completely black screenshot IS useless and should be flagged.
-        when {
-            avgBrightness < VERY_DARK_THRESHOLD -> issues.add(QualityIssue.VERY_DARK)
-            avgBrightness < UNDEREXPOSED_AVG_BRIGHTNESS && p99 < HIGHLIGHT_BRIGHTNESS -> issues.add(QualityIssue.UNDEREXPOSED)
+        // Underexposed — NOT screenshot-gated (dark photos get misidentified as screenshots)
+        // The strict thresholds (avg < 0.20, p99 < 80) ensure only truly dark images are caught.
+        // Dark screenshots always have readable text/icons pushing p99 well above 80.
+        if (avgBrightness < UNDEREXPOSED_AVG_BRIGHTNESS && p99 < HIGHLIGHT_BRIGHTNESS) {
+            issues.add(QualityIssue.UNDEREXPOSED)
         }
 
         // Brightness checks — screenshot-gated (white screenshots aren't overexposed)
