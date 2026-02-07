@@ -8,7 +8,9 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -63,6 +65,17 @@ fun LowQualityPhotoCard(
         modifier = modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(8.dp))
+            .then(
+                if (isSelected) {
+                    Modifier.border(
+                        width = 3.dp,
+                        color = ActionDelete,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown()
@@ -81,13 +94,11 @@ fun LowQualityPhotoCard(
                     // Cancel the long press job if still running
                     longPressJob.cancel()
 
-                    if (longPressTriggered) {
-                        // Long press was triggered, now releasing
-                        onLongPressRelease()
-                    } else if (up != null) {
-                        // Short tap - trigger selection
-                        onToggleSelection()
+                    if (up != null) {
+                        if (longPressTriggered) onLongPressRelease()
+                        else onToggleSelection()
                     }
+                    // If up == null && longPressTriggered → finger moved, overlay handles dismiss
                 }
             }
     ) {
@@ -122,22 +133,29 @@ fun LowQualityPhotoCard(
             )
         }
 
-        // Selection indicator
+        // Selection overlay and checkmark (matches duplicate photo style)
         if (isSelected) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Seagrass.copy(alpha = 0.3f))
+                    .background(Color.Black.copy(alpha = 0.3f))
             )
-            Icon(
-                imageVector = Icons.Filled.CheckCircle,
-                contentDescription = "Selected",
-                tint = Seagrass,
+
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(4.dp)
+                    .padding(6.dp)
                     .size(24.dp)
-            )
+                    .background(ActionDelete, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Selected for deletion",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 }

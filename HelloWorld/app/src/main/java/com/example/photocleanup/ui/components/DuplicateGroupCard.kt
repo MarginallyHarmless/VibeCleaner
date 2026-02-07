@@ -46,13 +46,22 @@ import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.ActionDelete
 import com.example.photocleanup.ui.theme.DarkSurface
 import com.example.photocleanup.ui.theme.TextSecondary
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
+ * Info needed for fullscreen photo preview with metadata.
+ */
+data class FullscreenPhotoInfo(
+    val uri: String,
+    val fileSize: Long = 0,
+    val dateAdded: Long = 0,
+    val bucketName: String = ""
+)
+
+/**
  * Card component that displays a group of duplicate photos.
- * Shows all photos in a grid layout (4 per row).
+ * Shows all photos in a grid layout (3 per row, matching low quality grid).
  * Users tap photos to select them for deletion.
  */
 @OptIn(ExperimentalLayoutApi::class)
@@ -61,7 +70,7 @@ fun DuplicateGroupCard(
     group: DuplicateGroupWithPhotos,
     selectedPhotoIds: Set<Long>,
     onPhotoSelect: (Long) -> Unit,
-    onLongPressPhoto: (String) -> Unit,
+    onLongPressPhoto: (FullscreenPhotoInfo) -> Unit,
     onLongPressRelease: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -101,22 +110,22 @@ fun DuplicateGroupCard(
                 .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            maxItemsInEachRow = 4
+            maxItemsInEachRow = 3
         ) {
             group.photos.forEach { photo ->
                 DuplicatePhotoThumbnail(
                     photo = photo,
                     isSelected = photo.id in selectedPhotoIds,
                     onSelect = { onPhotoSelect(photo.id) },
-                    onLongPressStart = { onLongPressPhoto(photo.uri) },
+                    onLongPressStart = { onLongPressPhoto(FullscreenPhotoInfo(photo.uri, photo.fileSize, photo.dateAdded, photo.bucketName)) },
                     onLongPressEnd = onLongPressRelease,
                     modifier = Modifier.weight(1f)
                 )
             }
             // Add empty spacers if needed to fill incomplete row
-            val remainder = group.photos.size % 4
+            val remainder = group.photos.size % 3
             if (remainder > 0) {
-                repeat(4 - remainder) {
+                repeat(3 - remainder) {
                     Spacer(modifier = Modifier.weight(1f))
                 }
             }
@@ -171,13 +180,11 @@ private fun DuplicatePhotoThumbnail(
                     // Cancel the long press job if still running
                     longPressJob.cancel()
 
-                    if (longPressTriggered) {
-                        // Long press was triggered, now releasing
-                        onLongPressEnd()
-                    } else if (up != null) {
-                        // Short tap - trigger selection
-                        onSelect()
+                    if (up != null) {
+                        if (longPressTriggered) onLongPressEnd()
+                        else onSelect()
                     }
+                    // If up == null && longPressTriggered → finger moved, overlay handles dismiss
                 }
             }
     ) {

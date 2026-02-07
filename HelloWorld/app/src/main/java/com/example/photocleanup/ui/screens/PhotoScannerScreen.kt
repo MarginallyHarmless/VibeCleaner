@@ -58,6 +58,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.photocleanup.data.DuplicateGroupWithPhotos
@@ -70,6 +72,7 @@ import com.example.photocleanup.ui.components.ButtonIntent
 import com.example.photocleanup.ui.components.DialogButton
 import com.example.photocleanup.ui.components.DialogButtonIntent
 import com.example.photocleanup.ui.components.DuplicateGroupCard
+import com.example.photocleanup.ui.components.FullscreenPhotoInfo
 import com.example.photocleanup.ui.components.LowQualityPhotoCard
 import com.example.photocleanup.ui.components.ScanStatusCard
 import com.example.photocleanup.ui.theme.AccentPrimary
@@ -80,6 +83,9 @@ import com.example.photocleanup.viewmodel.PhotoScannerViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Combined screen for duplicate detection and low quality photo management.
@@ -148,7 +154,7 @@ fun PhotoScannerScreen(
     }
 
     // State for fullscreen photo preview (long-press)
-    var fullscreenPhotoUri by remember { mutableStateOf<String?>(null) }
+    var fullscreenPhoto by remember { mutableStateOf<FullscreenPhotoInfo?>(null) }
 
     if (!permissionState.status.isGranted) {
         PermissionScreen(
@@ -214,8 +220,8 @@ fun PhotoScannerScreen(
                             groupCount = groupCount,
                             selectedPhotoIds = selectedPhotoIds,
                             onPhotoSelect = { viewModel.togglePhotoSelection(it) },
-                            onLongPressPhoto = { uri -> fullscreenPhotoUri = uri },
-                            onLongPressRelease = { fullscreenPhotoUri = null },
+                            onLongPressPhoto = { info -> fullscreenPhoto = info },
+                            onLongPressRelease = { fullscreenPhoto = null },
                             onStartScan = { viewModel.startScan() },
                             modifier = Modifier.weight(1f)
                         )
@@ -227,8 +233,8 @@ fun PhotoScannerScreen(
                             lowQualityCount = lowQualityCount,
                             selectedUris = selectedLowQualityUris,
                             onToggleSelection = { viewModel.toggleLowQualitySelection(it) },
-                            onLongPressPhoto = { uri -> fullscreenPhotoUri = uri },
-                            onLongPressRelease = { fullscreenPhotoUri = null },
+                            onLongPressPhoto = { info -> fullscreenPhoto = info },
+                            onLongPressRelease = { fullscreenPhoto = null },
                             onStartScan = { viewModel.startScan() },
                             modifier = Modifier.weight(1f)
                         )
@@ -298,8 +304,11 @@ fun PhotoScannerScreen(
             }
 
             // Fullscreen photo overlay
-            fullscreenPhotoUri?.let { uri ->
-                FullscreenPhotoOverlay(photoUri = uri)
+            fullscreenPhoto?.let { info ->
+                FullscreenPhotoOverlay(
+                    photoInfo = info,
+                    onDismiss = { fullscreenPhoto = null }
+                )
             }
         }
     }
@@ -387,7 +396,7 @@ private fun DuplicatesContent(
     groupCount: Int,
     selectedPhotoIds: Set<Long>,
     onPhotoSelect: (Long) -> Unit,
-    onLongPressPhoto: (String) -> Unit,
+    onLongPressPhoto: (FullscreenPhotoInfo) -> Unit,
     onLongPressRelease: () -> Unit,
     onStartScan: () -> Unit,
     modifier: Modifier = Modifier
@@ -442,7 +451,7 @@ private fun LowQualityContent(
     lowQualityCount: Int,
     selectedUris: Set<String>,
     onToggleSelection: (String) -> Unit,
-    onLongPressPhoto: (String) -> Unit,
+    onLongPressPhoto: (FullscreenPhotoInfo) -> Unit,
     onLongPressRelease: () -> Unit,
     onStartScan: () -> Unit,
     modifier: Modifier = Modifier
@@ -647,7 +656,7 @@ private fun DuplicateGroupsList(
     groups: List<DuplicateGroupWithPhotos>,
     selectedPhotoIds: Set<Long>,
     onPhotoSelect: (Long) -> Unit,
-    onLongPressPhoto: (String) -> Unit,
+    onLongPressPhoto: (FullscreenPhotoInfo) -> Unit,
     onLongPressRelease: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -682,7 +691,7 @@ private fun LowQualityPhotoGrid(
     photos: List<PhotoHash>,
     selectedUris: Set<String>,
     onToggleSelection: (String) -> Unit,
-    onLongPressPhoto: (String) -> Unit,
+    onLongPressPhoto: (FullscreenPhotoInfo) -> Unit,
     onLongPressRelease: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -701,7 +710,7 @@ private fun LowQualityPhotoGrid(
                 photo = photo,
                 isSelected = photo.uri in selectedUris,
                 onToggleSelection = { onToggleSelection(photo.uri) },
-                onLongPress = { onLongPressPhoto(photo.uri) },
+                onLongPress = { onLongPressPhoto(FullscreenPhotoInfo(photo.uri, photo.fileSize, photo.dateAdded, photo.bucketName)) },
                 onLongPressRelease = onLongPressRelease
             )
         }
@@ -710,23 +719,103 @@ private fun LowQualityPhotoGrid(
 
 @Composable
 private fun FullscreenPhotoOverlay(
-    photoUri: String
+    photoInfo: FullscreenPhotoInfo,
+    onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+
+    // Query display name from ContentResolver
+    val displayName = remember(photoInfo.uri) {
+        try {
+            val uri = Uri.parse(photoInfo.uri)
+            context.contentResolver.query(
+                uri,
+                arrayOf(MediaStore.Images.Media.DISPLAY_NAME),
+                null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        } catch (_: Exception) { null }
+    } ?: "Unknown"
+
+    // Format file size
+    val fileSizeText = remember(photoInfo.fileSize) {
+        when {
+            photoInfo.fileSize >= 1_000_000 -> String.format("%.1f MB", photoInfo.fileSize / 1_000_000.0)
+            photoInfo.fileSize >= 1_000 -> String.format("%.0f KB", photoInfo.fileSize / 1_000.0)
+            else -> "${photoInfo.fileSize} B"
+        }
+    }
+
+    // Format date
+    val dateText = remember(photoInfo.dateAdded) {
+        if (photoInfo.dateAdded > 0) {
+            val sdf = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+            sdf.format(Date(photoInfo.dateAdded * 1000))
+        } else ""
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.95f)),
+            .background(Color.Black.copy(alpha = 0.95f))
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.forEach { it.consume() }
+                        if (event.changes.all { !it.pressed }) {
+                            onDismiss()
+                            break
+                        }
+                    }
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(photoUri)
+            model = ImageRequest.Builder(context)
+                .data(photoInfo.uri)
                 .crossfade(true)
                 .build(),
             contentDescription = "Fullscreen preview",
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
         )
+
+        // Metadata bar at bottom
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(Color.Black.copy(alpha = 0.7f))
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = displayName,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = buildString {
+                    append(fileSizeText)
+                    if (dateText.isNotEmpty()) {
+                        append("  •  ")
+                        append(dateText)
+                    }
+                    if (photoInfo.bucketName.isNotEmpty()) {
+                        append("  •  ")
+                        append(photoInfo.bucketName)
+                    }
+                },
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 12.sp,
+                maxLines = 1
+            )
+        }
     }
 }
 
