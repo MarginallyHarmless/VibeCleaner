@@ -16,11 +16,14 @@ import kotlin.math.sqrt
  *
  * Blur detection uses a tiled Laplacian approach on a 256x256 bitmap:
  * - Divides the image into a 4x4 grid of 64x64 tiles
- * - Computes Laplacian variance per tile (measures edge strength)
- * - Uses the top quartile (best 4 of 16 tiles) as the sharpness score
+ * - Filters out featureless tiles (luminance stddev < 5) — uniform areas like
+ *   sky, walls, or skin can't be judged for sharpness (always low variance)
+ * - Computes Laplacian variance per textured tile (measures edge strength)
+ * - Uses the top quartile of textured tiles as the sharpness score
  *   so that bokeh photos score high (subject tiles dominate) while
  *   uniformly blurry photos score low (even the best tiles are weak)
- * - A single noisy tile can't save a blurry photo (averaged with 3 others)
+ * - Center 4 tiles scored separately to catch misfocused photos
+ * - If fewer than 2 textured tiles exist, blur check is skipped entirely
  *
  * Motion blur is detected via directional gradient analysis (Sobel-X vs Sobel-Y).
  * If gradients are strongly directional (ratio > 3.0), it indicates motion blur.
@@ -52,26 +55,52 @@ object QualityAnalyzer {
     private const val EDGE_PIXEL_THRESHOLD = 15.0        // |Laplacian| above this = edge pixel
     private const val EDGE_DENSITY_BLURRY_THRESHOLD = 0.05  // Below 5% edge pixels = likely blurry
 
+    // Texture-aware tile filtering
+    private const val TILE_TEXTURE_THRESHOLD = 5.0       // Min luminance stddev for a tile to be "textured" (below = uniform color, skip)
+    private const val MIN_TEXTURED_TILES = 2             // Need at least 2 textured tiles to judge blur (otherwise image is mostly uniform)
+
     // Motion blur detection
     private const val MOTION_BLUR_RATIO_THRESHOLD = 5.0  // Gradient ratio above this = directional blur (5.0 avoids false positives on buildings/stripes)
 
-    // Exposure thresholds (unchanged)
-    private const val DARK_THRESHOLD = 0.04f           // Below = almost black (accidental shots)
+    // Exposure thresholds
+    private const val DARK_THRESHOLD = 0.10f           // Below = skip blur check (too dark to judge sharpness)
+    private const val VERY_DARK_THRESHOLD = 0.05f      // Below = almost entirely black (pocket shot, lens covered)
     private const val BRIGHT_THRESHOLD = 0.96f         // Above = almost white (accidental shots)
-    private const val UNDEREXPOSED_THRESHOLD = 0.06f   // Below = extremely dark (stricter - night photos OK)
     private const val OVEREXPOSED_THRESHOLD = 0.90f    // Above = very bright
+
+    // Underexposed detection: requires BOTH conditions:
+    // 1. Image is overall dark (avgBrightness < 0.25) — gates the check so normal photos are never evaluated
+    // 2. Even the brightest 1% of pixels are very dim (p99 < 100) — genuinely underexposed photos
+    //    have nothing even moderately bright; night photos with any visible subject push p99 well
+    //    above 100; dark screenshots have bright UI text/icons that push p99 above 100
+    // NOT gated by screenshot detection — the p99 check naturally handles dark screenshots
+    private const val UNDEREXPOSED_AVG_BRIGHTNESS = 0.25f  // Only check p99 if overall dark
+    private const val HIGHLIGHT_BRIGHTNESS = 100           // p99 below this = nothing is even moderately bright (~39% luminance)
+
     private const val NOISE_THRESHOLD = 0.95f          // Above = extreme noise only (disabled anyway)
     private const val CONTRAST_THRESHOLD = 0.06f       // Below = very flat
+
+    /**
+     * Holds exposure metrics from histogram analysis.
+     */
+    data class ExposureResult(
+        val score: Float,            // Overall exposure quality (0-1)
+        val avgBrightness: Float,    // Mean brightness (0-1)
+        val contrast: Float,         // Dynamic range (0-1)
+        val p95: Int,                // 95th percentile luminance (used for contrast)
+        val p99: Int                 // 99th percentile luminance (brightness of top 1% — for underexposed detection)
+    )
 
     /**
      * Holds detailed sharpness metrics from the tiled Laplacian analysis.
      */
     data class SharpnessResult(
-        val score: Float,            // Top-quartile sharpness score (0-1)
+        val score: Float,            // Top-quartile sharpness score (0-1), only from textured tiles
         val centerScore: Float,      // Average sharpness of center 4 tiles (0-1)
         val edgeDensity: Float,      // Fraction of pixels that are edges (0-1)
         val maxTileVariance: Double,  // Highest single tile variance (for debugging)
-        val meanTileVariance: Double  // Average tile variance (for debugging)
+        val meanTileVariance: Double, // Average tile variance (for debugging)
+        val texturedTileCount: Int   // How many tiles had enough texture to judge sharpness
     )
 
     data class QualityResult(
@@ -126,7 +155,11 @@ object QualityAnalyzer {
 
         val sharpnessResult = computeSharpnessDetailed(lum, width, height)
         val sharpness = sharpnessResult.score
-        val (exposure, avgBrightness, contrast) = computeExposure(lum, totalPixels)
+        val exposureResult = computeExposure(lum, totalPixels)
+        val exposure = exposureResult.score
+        val avgBrightness = exposureResult.avgBrightness
+        val contrast = exposureResult.contrast
+        val p99 = exposureResult.p99
         val noise = computeNoise(lum, width, height)
 
         // Check if this looks like a screenshot (skip exposure checks for screenshots)
@@ -135,13 +168,20 @@ object QualityAnalyzer {
         // Detect issues
         val issues = mutableListOf<QualityIssue>()
 
-        // Exposure issues - skip for screenshots (they often have white/black UI backgrounds)
+        // Darkness checks — NOT screenshot-gated
+        // The p99 check naturally excludes dark screenshots (their bright UI text/icons push p99
+        // well above 100). A completely black screenshot IS useless and should be flagged.
+        when {
+            avgBrightness < VERY_DARK_THRESHOLD -> issues.add(QualityIssue.VERY_DARK)
+            avgBrightness < UNDEREXPOSED_AVG_BRIGHTNESS && p99 < HIGHLIGHT_BRIGHTNESS -> issues.add(QualityIssue.UNDEREXPOSED)
+        }
+
+        // Brightness checks — screenshot-gated (white screenshots aren't overexposed)
         if (!isLikelyScreenshot) {
-            when {
-                avgBrightness < DARK_THRESHOLD -> issues.add(QualityIssue.VERY_DARK)
-                avgBrightness > BRIGHT_THRESHOLD -> issues.add(QualityIssue.VERY_BRIGHT)
-                avgBrightness < UNDEREXPOSED_THRESHOLD -> issues.add(QualityIssue.UNDEREXPOSED)
-                avgBrightness > OVEREXPOSED_THRESHOLD -> issues.add(QualityIssue.OVEREXPOSED)
+            if (avgBrightness > BRIGHT_THRESHOLD) {
+                issues.add(QualityIssue.VERY_BRIGHT)
+            } else if (avgBrightness > OVEREXPOSED_THRESHOLD) {
+                issues.add(QualityIssue.OVEREXPOSED)
             }
         }
 
@@ -197,10 +237,10 @@ object QualityAnalyzer {
         if (DEBUG) {
             android.util.Log.d("QualityAnalyzer",
                 "sharpness=${"%.3f".format(sharpness)}, centerScore=${"%.3f".format(sharpnessResult.centerScore)}, " +
-                "edgeDensity=${"%.3f".format(sharpnessResult.edgeDensity)}, " +
+                "texturedTiles=${sharpnessResult.texturedTileCount}/16, edgeDensity=${"%.3f".format(sharpnessResult.edgeDensity)}, " +
                 "maxTileVar=${"%.1f".format(sharpnessResult.maxTileVariance)}, meanTileVar=${"%.1f".format(sharpnessResult.meanTileVariance)}, " +
                 "exposure=${"%.2f".format(exposure)}, brightness=${"%.2f".format(avgBrightness)}, " +
-                "contrast=${"%.2f".format(contrast)}, issues=$issues")
+                "p99=$p99, contrast=${"%.2f".format(contrast)}, issues=$issues")
         }
 
         return QualityResult(
@@ -232,14 +272,14 @@ object QualityAnalyzer {
      * used as a tiebreaker for borderline cases.
      */
     private fun computeSharpnessDetailed(lum: IntArray, width: Int, height: Int): SharpnessResult {
-        if (width < 3 || height < 3) return SharpnessResult(0.5f, 0.5f, 0.0f, 0.0, 0.0)
+        if (width < 3 || height < 3) return SharpnessResult(0.5f, 0.5f, 0.0f, 0.0, 0.0, 0)
 
         val tileW = width / QUALITY_GRID_SIZE
         val tileH = height / QUALITY_GRID_SIZE
-        if (tileW < 3 || tileH < 3) return SharpnessResult(0.5f, 0.5f, 0.0f, 0.0, 0.0)
+        if (tileW < 3 || tileH < 3) return SharpnessResult(0.5f, 0.5f, 0.0f, 0.0, 0.0, 0)
 
-        val tileVariances = mutableListOf<Double>()
-        val centerTileVariances = mutableListOf<Double>()
+        val texturedTileVariances = mutableListOf<Double>()
+        val texturedCenterTileVariances = mutableListOf<Double>()
         var totalEdgePixels = 0
         var totalPixelsChecked = 0
 
@@ -253,11 +293,13 @@ object QualityAnalyzer {
                 val endX = if (tx == QUALITY_GRID_SIZE - 1) width else startX + tileW
                 val endY = if (ty == QUALITY_GRID_SIZE - 1) height else startY + tileH
 
-                var sum = 0.0
-                var sumSq = 0.0
+                var lapSum = 0.0
+                var lapSumSq = 0.0
+                var lumSum = 0L
+                var lumSumSq = 0L
                 var count = 0
 
-                // Laplacian kernel: [0, 1, 0], [1, -4, 1], [0, 1, 0]
+                // Laplacian kernel + luminance stats in a single pass
                 for (y in max(startY, 1) until min(endY, height - 1)) {
                     for (x in max(startX, 1) until min(endX, width - 1)) {
                         val idx = y * width + x
@@ -268,8 +310,13 @@ object QualityAnalyzer {
                         val right = lum[idx + 1]
 
                         val laplacian = (top + bottom + left + right - 4 * center).toDouble()
-                        sum += laplacian
-                        sumSq += laplacian * laplacian
+                        lapSum += laplacian
+                        lapSumSq += laplacian * laplacian
+
+                        // Accumulate luminance for texture check
+                        lumSum += center
+                        lumSumSq += center.toLong() * center
+
                         count++
 
                         // Count edge pixels for edge density
@@ -281,43 +328,66 @@ object QualityAnalyzer {
                 }
 
                 if (count > 0) {
-                    val mean = sum / count
-                    val variance = (sumSq / count) - (mean * mean)
-                    tileVariances.add(variance)
+                    // Compute luminance stddev to check if tile has texture
+                    val lumMean = lumSum.toDouble() / count
+                    val lumVariance = (lumSumSq.toDouble() / count) - (lumMean * lumMean)
+                    val lumStddev = sqrt(lumVariance.coerceAtLeast(0.0))
 
-                    // Track center tile variances separately
-                    if (tx in centerRange && ty in centerRange) {
-                        centerTileVariances.add(variance)
+                    // Skip featureless tiles (uniform color: sky, walls, skin, etc.)
+                    // These have near-zero Laplacian regardless of focus — can't judge sharpness
+                    if (lumStddev >= TILE_TEXTURE_THRESHOLD) {
+                        val lapMean = lapSum / count
+                        val lapVariance = (lapSumSq / count) - (lapMean * lapMean)
+                        texturedTileVariances.add(lapVariance)
+
+                        if (tx in centerRange && ty in centerRange) {
+                            texturedCenterTileVariances.add(lapVariance)
+                        }
+                    } else if (DEBUG) {
+                        android.util.Log.d("QualityAnalyzer",
+                            "Tile ($tx,$ty) skipped: lumStddev=${"%.1f".format(lumStddev)} < $TILE_TEXTURE_THRESHOLD (featureless)")
                     }
                 }
             }
         }
 
-        if (tileVariances.isEmpty()) return SharpnessResult(0.5f, 0.5f, 0.0f, 0.0, 0.0)
+        val texturedCount = texturedTileVariances.size
+
+        // Not enough textured tiles to judge — assume sharp (it's a style choice, not blur)
+        if (texturedCount < MIN_TEXTURED_TILES) {
+            if (DEBUG) {
+                android.util.Log.d("QualityAnalyzer",
+                    "Only $texturedCount textured tiles (< $MIN_TEXTURED_TILES), skipping blur check")
+            }
+            return SharpnessResult(1.0f, 1.0f, 0.0f, 0.0, 0.0, texturedCount)
+        }
 
         // Sort descending so best tiles are first
-        tileVariances.sortDescending()
+        texturedTileVariances.sortDescending()
 
-        val maxVariance = tileVariances[0]
-        val meanVariance = tileVariances.average()
+        val maxVariance = texturedTileVariances[0]
+        val meanVariance = texturedTileVariances.average()
 
-        // Top quartile: average the best 4 tiles' normalized scores
-        val topCount = min(TOP_QUARTILE_COUNT, tileVariances.size)
+        // Top quartile: average the best N textured tiles' normalized scores
+        // Scale quartile count proportionally if fewer textured tiles than 16
+        val topCount = min(TOP_QUARTILE_COUNT, texturedCount)
         var topQuartileSum = 0.0
         for (i in 0 until topCount) {
-            topQuartileSum += (sqrt(tileVariances[i]) / TILE_NORMALIZATION_DIVISOR).coerceIn(0.0, 1.0)
+            topQuartileSum += (sqrt(texturedTileVariances[i]) / TILE_NORMALIZATION_DIVISOR).coerceIn(0.0, 1.0)
         }
         val score = (topQuartileSum / topCount).toFloat()
 
-        // Center score: average of center 4 tiles' normalized scores
-        val centerScore = if (centerTileVariances.isNotEmpty()) {
+        // Center score: average of textured center tiles' normalized scores
+        val centerScore = if (texturedCenterTileVariances.isNotEmpty()) {
             var centerSum = 0.0
-            for (v in centerTileVariances) {
+            for (v in texturedCenterTileVariances) {
                 centerSum += (sqrt(v) / TILE_NORMALIZATION_DIVISOR).coerceIn(0.0, 1.0)
             }
-            (centerSum / centerTileVariances.size).toFloat()
+            (centerSum / texturedCenterTileVariances.size).toFloat()
         } else {
-            score // fallback to overall score if no center tiles
+            // No textured center tiles — center is uniform, can't judge center focus
+            // Default to passing so we don't false-positive on e.g. close-up of a white object
+            1.0f
         }
 
         val edgeDensity = if (totalPixelsChecked > 0) {
@@ -325,10 +395,10 @@ object QualityAnalyzer {
         } else 0f
 
         if (DEBUG) {
-            val tileScores = tileVariances.map { "%.1f".format(it) }
-            val centerScores = centerTileVariances.map { "%.1f".format(it) }
+            val tileScores = texturedTileVariances.map { "%.1f".format(it) }
+            val centerScores = texturedCenterTileVariances.map { "%.1f".format(it) }
             android.util.Log.d("QualityAnalyzer",
-                "Tile variances (sorted): $tileScores, topQ=${"%.3f".format(score)}, " +
+                "Textured tiles: $texturedCount/16, variances (sorted): $tileScores, topQ=${"%.3f".format(score)}, " +
                 "centerTiles=$centerScores, centerScore=${"%.3f".format(centerScore)}, " +
                 "edgeDensity=${"%.3f".format(edgeDensity)}")
         }
@@ -338,7 +408,8 @@ object QualityAnalyzer {
             centerScore = centerScore,
             edgeDensity = edgeDensity,
             maxTileVariance = maxVariance,
-            meanTileVariance = meanVariance
+            meanTileVariance = meanVariance,
+            texturedTileCount = texturedCount
         )
     }
 
@@ -411,10 +482,10 @@ object QualityAnalyzer {
 
     /**
      * Compute exposure metrics from histogram analysis.
-     * Returns (exposureScore, avgBrightness, contrast)
+     * Returns p99 (top 1% brightness) for underexposed detection and p5/p95 for contrast.
      */
-    private fun computeExposure(lum: IntArray, pixelCount: Int): Triple<Float, Float, Float> {
-        if (pixelCount == 0) return Triple(0.5f, 0.5f, 0.5f)
+    private fun computeExposure(lum: IntArray, pixelCount: Int): ExposureResult {
+        if (pixelCount == 0) return ExposureResult(0.5f, 0.5f, 0.5f, 128, 128)
 
         val histogram = IntArray(256)
         var totalBrightness = 0L
@@ -427,15 +498,17 @@ object QualityAnalyzer {
 
         val avgBrightness = (totalBrightness.toFloat() / pixelCount) / 255f
 
-        // Find percentiles for contrast
+        // Find percentiles: p5/p95 for contrast, p99 for underexposed detection
         var cumulative = 0
         var p5 = 0
         var p95 = 255
+        var p99 = 255
         for (i in 0..255) {
             cumulative += histogram[i]
             if (p5 == 0 && cumulative >= pixelCount * 0.05) p5 = i
-            if (cumulative >= pixelCount * 0.95) {
-                p95 = i
+            if (p95 == 255 && cumulative >= pixelCount * 0.95) p95 = i
+            if (cumulative >= pixelCount * 0.99) {
+                p99 = i
                 break
             }
         }
@@ -450,7 +523,7 @@ object QualityAnalyzer {
             else -> 0.8f + (0.5f - abs(avgBrightness - 0.5f)) * 0.4f  // Good range
         }.coerceIn(0f, 1f)
 
-        return Triple(exposureScore, avgBrightness, contrast)
+        return ExposureResult(exposureScore, avgBrightness, contrast, p95, p99)
     }
 
     /**
@@ -540,9 +613,8 @@ object QualityAnalyzer {
 
         // Screenshot if:
         // 1. >35% pure white or black (solid background with text/icons), OR
-        // 2. Limited color palette (<60 unique colors) indicating UI graphics, OR
+        // 2. Very limited palette (<60 unique colors) — UI graphics, OR
         // 3. Moderate solid background (>25%) AND limited palette (<120 colors)
-        // Note: thresholds scaled up from 20/40 because 256x256 preserves more detail than 64x64
         val hasSolidBackground = pureWhiteRatio > 0.35f || pureBlackRatio > 0.35f
         val hasVeryLimitedPalette = uniqueColors < 60
         val hasModerateSolidAndLimitedColors =
@@ -552,7 +624,7 @@ object QualityAnalyzer {
 
         if (DEBUG && isScreenshot) {
             android.util.Log.d("QualityAnalyzer",
-                "Screenshot detected: white=$pureWhiteRatio, black=$pureBlackRatio, colors=$uniqueColors")
+                "Screenshot detected: white=${"%.2f".format(pureWhiteRatio)}, black=${"%.2f".format(pureBlackRatio)}, colors=$uniqueColors")
         }
 
         return isScreenshot

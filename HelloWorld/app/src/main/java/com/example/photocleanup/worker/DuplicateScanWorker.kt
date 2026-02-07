@@ -67,7 +67,12 @@ class DuplicateScanWorker(
         // Version 14: Even more sensitive blur detection (0.38)
         // Version 15: Tiled Laplacian (256x256, 4x4 grid), motion blur detection, edge density tiebreaker
         // Version 16: Center-weighted scoring — catches misfocused photos where edges are sharp but center is blurry
-        const val CURRENT_ALGORITHM_VERSION = 16
+        // Version 17: Texture-aware tile filtering — skip featureless tiles (sky, walls) to avoid false positives on uniform-color photos
+        // Version 18: Better dark photo detection — raised thresholds, bright-pixel rescue for night photos
+        // Version 19: Simplified underexposed detection — p95 highlight check only, improved dark-mode screenshot detection
+        // Version 20: p99 + avgBrightness gate for underexposed
+        // Version 21: Remove screenshot gate from darkness checks (p99 handles dark screenshots naturally), lower thresholds (p99<100, avg<0.25)
+        const val CURRENT_ALGORITHM_VERSION = 21
 
         // Progress data keys
         const val KEY_PROGRESS = "progress"
