@@ -70,35 +70,28 @@ fun SwipeablePhotoCard(
     var swipeDirection by remember { mutableIntStateOf(0) }
     val minOffsetForDirectionalDismiss = with(density) { 15.dp.toPx() }
 
+    // Calculate targets
+    val deleteTargetX = with(density) { -(screenWidth / 2 - 24.dp).toPx() }
+    val deleteTargetY = with(density) { -(screenHeight / 2 - 60.dp).toPx() }
+    val keepTargetX = with(density) { screenWidth.toPx() * 1.5f }
+
     // Use Animatable for explicit control over animations
     val animatedOffsetX = remember { Animatable(0f) }
     val animatedOffsetY = remember { Animatable(0f) }
     val animatedScale = remember { Animatable(1f) }
     val animatedAlpha = remember { Animatable(1f) }
 
-    // Calculate targets
-    val deleteTargetX = with(density) { -(screenWidth / 2 - 24.dp).toPx() }
-    val deleteTargetY = with(density) { -(screenHeight / 2 - 60.dp).toPx() }
-    val keepTargetX = with(density) { screenWidth.toPx() * 1.5f }
+    // Separate animatable for undo entry — avoids conflict with drag sync
+    val entryStartX = when (entryDirection) {
+        -1 -> with(density) { -screenWidth.toPx() * 1.5f }
+        1 -> keepTargetX
+        else -> 0f
+    }
+    val entryOffset = remember { Animatable(entryStartX) }
 
-    // Entry animation for undo — reverse the exit animation
     LaunchedEffect(Unit) {
         if (entryDirection != 0) {
-            if (entryDirection == -1) {
-                // Was deleted → flew to badge (top-left, shrunk). Start there.
-                animatedOffsetX.snapTo(deleteTargetX)
-                animatedOffsetY.snapTo(deleteTargetY)
-                animatedScale.snapTo(0.1f)
-            } else {
-                // Was kept → flew off right, faded. Start there.
-                animatedOffsetX.snapTo(keepTargetX)
-                animatedAlpha.snapTo(0f)
-            }
-            // Animate back to center
-            launch { animatedOffsetX.animateTo(0f, tween(250)) }
-            launch { animatedOffsetY.animateTo(0f, tween(250)) }
-            launch { animatedScale.animateTo(1f, tween(250)) }
-            launch { animatedAlpha.animateTo(1f, tween(250)) }
+            entryOffset.animateTo(0f, tween(250))
         }
     }
 
@@ -153,7 +146,7 @@ fun SwipeablePhotoCard(
         Card(
             modifier = Modifier
                 .fillMaxSize()
-                .offset { IntOffset(animatedOffsetX.value.roundToInt(), animatedOffsetY.value.roundToInt()) }
+                .offset { IntOffset((animatedOffsetX.value + entryOffset.value).roundToInt(), animatedOffsetY.value.roundToInt()) }
                 .graphicsLayer {
                     rotationZ = rotation
                     scaleX = animatedScale.value
