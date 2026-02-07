@@ -79,7 +79,9 @@ class DuplicateScanWorker(
         //   gate center-blur check on sharpness<0.65 (off-center compositions are not misfocused),
         //   remove strong motion blur check (directional content like buildings/stripes causes false positives),
         //   add debug labels (photo filename) to quality analyzer logs
-        const val CURRENT_ALGORITHM_VERSION = 25
+        // Version 27: Widen edge-density rescue range from 0.05 to 0.20 below sharpness threshold,
+        //   raise edge density bar to 0.08 — fixes false positives on shallow DOF photos with smooth subjects (skin)
+        const val CURRENT_ALGORITHM_VERSION = 27
 
         // Progress data keys
         const val KEY_PROGRESS = "progress"

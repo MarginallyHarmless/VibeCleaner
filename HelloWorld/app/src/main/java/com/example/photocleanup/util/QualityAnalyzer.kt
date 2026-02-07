@@ -30,7 +30,7 @@ import kotlin.math.sqrt
  */
 object QualityAnalyzer {
 
-    private const val DEBUG = false
+    private const val DEBUG = true
 
     // Issue types
     enum class QualityIssue {
@@ -51,9 +51,9 @@ object QualityAnalyzer {
     // Tiled Laplacian constants
     private const val QUALITY_GRID_SIZE = 4              // 4x4 grid of tiles
     private const val TILE_NORMALIZATION_DIVISOR = 35.0  // Normalizes sqrt(variance) to 0-1 range (lower = wider score spread)
-    private const val TOP_QUARTILE_COUNT = 4             // Use best 4 of 16 tiles for score
+    private const val TOP_QUARTILE_COUNT = 2             // Use best 2 of 16 tiles for score (lower = more bokeh-tolerant)
     private const val EDGE_PIXEL_THRESHOLD = 15.0        // |Laplacian| above this = edge pixel
-    private const val EDGE_DENSITY_BLURRY_THRESHOLD = 0.05  // Below 5% edge pixels = likely blurry
+    private const val EDGE_DENSITY_BLURRY_THRESHOLD = 0.08  // Below 8% edge pixels = likely blurry (rescue threshold for shallow DOF)
 
     // Texture-aware tile filtering
     private const val TILE_TEXTURE_THRESHOLD = 5.0       // Min luminance stddev for a tile to be "textured" (below = uniform color, skip)
@@ -192,9 +192,10 @@ object QualityAnalyzer {
                 if (isMotion) {
                     issues.add(QualityIssue.MOTION_BLUR)
                 } else {
-                    // Edge density tiebreaker: if sharpness is borderline (within 0.05 of threshold),
-                    // only flag as blurry if edge density is also low
-                    val isBorderline = sharpness >= (SHARPNESS_THRESHOLD - 0.05f)
+                    // Edge density rescue: if sharpness is above the hard floor (within 0.20 of threshold),
+                    // real edges prove something is in focus (shallow DOF, smooth subjects like skin).
+                    // Genuinely blurry photos have edge density well below 0.08.
+                    val isBorderline = sharpness >= (SHARPNESS_THRESHOLD - 0.20f)
                     if (isBorderline && sharpnessResult.edgeDensity >= EDGE_DENSITY_BLURRY_THRESHOLD) {
                         if (DEBUG) {
                             android.util.Log.d("QualityAnalyzer",
@@ -262,8 +263,8 @@ object QualityAnalyzer {
      * Why top quartile instead of max or mean:
      * - Max alone: one noisy tile on a blurry photo fakes sharpness → false negatives
      * - Mean alone: bokeh background tiles drag down sharp subject → false positives
-     * - Top quartile: 4 tiles must be sharp to pass, robust against both failure modes
-     *   A sharp subject typically covers 25%+ of the frame (4+ tiles)
+     * - Top tiles: 2 tiles must be sharp to pass, tolerant of bokeh/shallow DOF
+     *   while still catching uniformly blurry photos (all tiles low)
      *
      * Center-weighted scoring: The inner 4 tiles (positions 1,1 / 1,2 / 2,1 / 2,2)
      * are scored separately. If a photo has sharp edges but a blurry center, it's
