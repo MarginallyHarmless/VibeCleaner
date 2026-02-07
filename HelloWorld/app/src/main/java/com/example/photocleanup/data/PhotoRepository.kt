@@ -213,6 +213,29 @@ class PhotoRepository(
         return reviewedPhotoDao.getToDeleteCount()
     }
 
+    suspend fun isPhotoFavourite(uri: Uri): Boolean = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext false
+        try {
+            context.contentResolver.query(
+                uri,
+                arrayOf(MediaStore.Images.Media.IS_FAVORITE),
+                null, null, null
+            )?.use { cursor ->
+                cursor.moveToFirst() && cursor.getInt(0) == 1
+            } ?: false
+        } catch (_: Exception) { false }
+    }
+
+    suspend fun setPhotoFavourite(uri: Uri, favourite: Boolean) = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext
+        try {
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.IS_FAVORITE, if (favourite) 1 else 0)
+            }
+            context.contentResolver.update(uri, values, null, null)
+        } catch (_: Exception) { }
+    }
+
     suspend fun markPhotosAsDeleted(uris: List<Uri>) {
         reviewedPhotoDao.markAsDeleted(uris.map { it.toString() })
     }

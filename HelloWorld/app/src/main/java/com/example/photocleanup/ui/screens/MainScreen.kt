@@ -26,6 +26,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,6 +71,7 @@ import com.example.photocleanup.ui.components.SwipeablePhotoCard
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.AccentPrimaryDim
 import com.example.photocleanup.ui.theme.ActionDelete
+import com.example.photocleanup.ui.theme.ActionKeep
 import com.example.photocleanup.viewmodel.PhotoViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -131,10 +134,11 @@ fun MainScreen(
         }
     }
 
-    // Load current photo album when photo changes
+    // Load current photo album and favourite status when photo changes
     LaunchedEffect(uiState.currentPhoto) {
         if (uiState.currentPhoto != null) {
             viewModel.loadCurrentPhotoAlbum()
+            viewModel.loadFavouriteStatus()
         }
     }
 
@@ -203,31 +207,7 @@ fun MainScreen(
                                 )
                             }
 
-                            // Spacer to push buttons to the right
                             Spacer(modifier = Modifier.weight(1f))
-
-                            // Delete badge and Undo button (aligned right)
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (uiState.lastAction != null) {
-                                    UndoButton(onClick = {
-                                        val action = uiState.lastAction
-                                        if (action != null) {
-                                            undoEntryDirection = if (action.action == "to_delete") -1 else 1
-                                            undoPhotoKey = action.photo
-                                        }
-                                        viewModel.undoLastAction()
-                                    })
-                                }
-                                if (uiState.toDeleteCount > 0) {
-                                    ToDeleteBadge(
-                                        count = uiState.toDeleteCount,
-                                        onClick = onNavigateToDelete
-                                    )
-                                }
-                            }
                         }
 
                         // Content area
@@ -251,6 +231,37 @@ fun MainScreen(
                                     totalCount = uiState.totalPhotosCount,
                                     reviewedCount = uiState.reviewedCount
                                 )
+
+                                // Action buttons row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (uiState.toDeleteCount > 0) {
+                                        ToDeleteBadge(
+                                            count = uiState.toDeleteCount,
+                                            onClick = onNavigateToDelete
+                                        )
+                                    }
+                                    if (uiState.lastAction != null) {
+                                        UndoButton(onClick = {
+                                            val action = uiState.lastAction
+                                            if (action != null) {
+                                                undoEntryDirection = if (action.action == "to_delete") -1 else 1
+                                                undoPhotoKey = action.photo
+                                            }
+                                            viewModel.undoLastAction()
+                                        })
+                                    }
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    FavouriteButton(
+                                        isFavourite = uiState.isCurrentPhotoFavourite,
+                                        onClick = { viewModel.toggleFavourite() }
+                                    )
+                                }
 
                                 Box(modifier = Modifier.weight(1f)) {
                                     // Next photo underneath (zIndex = 0)
@@ -341,6 +352,40 @@ private fun UndoButton(
                 text = "Undo",
                 style = MaterialTheme.typography.labelLarge,
                 color = AccentPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun FavouriteButton(
+    isFavourite: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val color = if (isFavourite) ActionKeep else Color.White.copy(alpha = 0.5f)
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = if (isFavourite) ActionKeep.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.08f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = if (isFavourite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                contentDescription = if (isFavourite) "Favourited" else "Add to favourites",
+                modifier = Modifier.size(18.dp),
+                tint = color
+            )
+            Text(
+                text = if (isFavourite) "Favourited" else "Favourite",
+                style = MaterialTheme.typography.labelLarge,
+                color = color,
                 fontWeight = FontWeight.SemiBold
             )
         }

@@ -51,7 +51,9 @@ data class PhotoUiState(
     val pendingMoveSourceAlbumId: Long? = null,
     val moveError: String? = null,
     // Menu filter state
-    val menuFilter: MenuFilter? = null
+    val menuFilter: MenuFilter? = null,
+    // Favourite state
+    val isCurrentPhotoFavourite: Boolean = false
 ) {
     val currentPhoto: Uri? get() = photos.getOrNull(currentIndex)
     val nextPhoto: Uri? get() = photos.getOrNull(currentIndex + 1)
@@ -320,6 +322,23 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val albumInfo = repository.getPhotoAlbumInfo(currentPhoto)
             _uiState.value = _uiState.value.copy(currentPhotoAlbum = albumInfo)
+        }
+    }
+
+    fun loadFavouriteStatus() {
+        val currentPhoto = _uiState.value.currentPhoto ?: return
+        viewModelScope.launch {
+            val isFav = repository.isPhotoFavourite(currentPhoto)
+            _uiState.value = _uiState.value.copy(isCurrentPhotoFavourite = isFav)
+        }
+    }
+
+    fun toggleFavourite() {
+        val currentPhoto = _uiState.value.currentPhoto ?: return
+        val newValue = !_uiState.value.isCurrentPhotoFavourite
+        viewModelScope.launch {
+            repository.setPhotoFavourite(currentPhoto, newValue)
+            _uiState.value = _uiState.value.copy(isCurrentPhotoFavourite = newValue)
         }
     }
 
