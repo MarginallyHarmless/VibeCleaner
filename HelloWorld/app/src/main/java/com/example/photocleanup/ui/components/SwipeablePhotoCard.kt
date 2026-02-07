@@ -56,6 +56,7 @@ fun SwipeablePhotoCard(
     photo: Uri,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
+    entryDirection: Int = 0, // -1 = from left (undo delete), 1 = from right (undo keep)
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -79,6 +80,27 @@ fun SwipeablePhotoCard(
     val deleteTargetX = with(density) { -(screenWidth / 2 - 24.dp).toPx() }
     val deleteTargetY = with(density) { -(screenHeight / 2 - 60.dp).toPx() }
     val keepTargetX = with(density) { screenWidth.toPx() * 1.5f }
+
+    // Entry animation for undo — reverse the exit animation
+    LaunchedEffect(Unit) {
+        if (entryDirection != 0) {
+            if (entryDirection == -1) {
+                // Was deleted → flew to badge (top-left, shrunk). Start there.
+                animatedOffsetX.snapTo(deleteTargetX)
+                animatedOffsetY.snapTo(deleteTargetY)
+                animatedScale.snapTo(0.1f)
+            } else {
+                // Was kept → flew off right, faded. Start there.
+                animatedOffsetX.snapTo(keepTargetX)
+                animatedAlpha.snapTo(0f)
+            }
+            // Animate back to center
+            launch { animatedOffsetX.animateTo(0f, tween(250)) }
+            launch { animatedOffsetY.animateTo(0f, tween(250)) }
+            launch { animatedScale.animateTo(1f, tween(250)) }
+            launch { animatedAlpha.animateTo(1f, tween(250)) }
+        }
+    }
 
     // Trigger animations when dismiss state changes
     LaunchedEffect(dismissState) {
