@@ -126,6 +126,19 @@ fun MainScreen(
         }
     }
 
+    // Launcher for favourite write permission (Android 11+)
+    val favouriteLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        viewModel.onFavouritePermissionResult(result.resultCode == android.app.Activity.RESULT_OK)
+    }
+
+    LaunchedEffect(uiState.favouriteIntentSender) {
+        uiState.favouriteIntentSender?.let { intentSender ->
+            favouriteLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+        }
+    }
+
     // Show move error as toast
     LaunchedEffect(uiState.moveError) {
         uiState.moveError?.let { error ->
@@ -232,11 +245,12 @@ fun MainScreen(
                                     reviewedCount = uiState.reviewedCount
                                 )
 
-                                // Action buttons row
+                                // Action buttons row (fixed height prevents layout shift from async toDeleteCount updates)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                                        .height(44.dp)
+                                        .padding(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {

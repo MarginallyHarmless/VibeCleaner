@@ -29,6 +29,12 @@ sealed class MoveResult {
     data object AlreadyInAlbum : MoveResult()
 }
 
+sealed class FavouriteResult {
+    data object Success : FavouriteResult()
+    data class RequiresPermission(val intentSender: IntentSender) : FavouriteResult()
+    data object Unsupported : FavouriteResult()
+}
+
 // Menu screen data classes
 
 enum class MenuMode {

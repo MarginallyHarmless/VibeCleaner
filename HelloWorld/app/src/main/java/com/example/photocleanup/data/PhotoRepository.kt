@@ -226,7 +226,28 @@ class PhotoRepository(
         } catch (_: Exception) { false }
     }
 
-    suspend fun setPhotoFavourite(uri: Uri, favourite: Boolean) = withContext(Dispatchers.IO) {
+    suspend fun setPhotoFavourite(uri: Uri, favourite: Boolean): FavouriteResult = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext FavouriteResult.Unsupported
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+                // Need write permission — request it
+                val writeRequest = MediaStore.createWriteRequest(
+                    context.contentResolver,
+                    listOf(uri)
+                )
+                return@withContext FavouriteResult.RequiresPermission(writeRequest.intentSender)
+            }
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.IS_FAVORITE, if (favourite) 1 else 0)
+            }
+            context.contentResolver.update(uri, values, null, null)
+            FavouriteResult.Success
+        } catch (_: Exception) {
+            FavouriteResult.Unsupported
+        }
+    }
+
+    suspend fun completeFavouriteAfterPermission(uri: Uri, favourite: Boolean) = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@withContext
         try {
             val values = ContentValues().apply {
