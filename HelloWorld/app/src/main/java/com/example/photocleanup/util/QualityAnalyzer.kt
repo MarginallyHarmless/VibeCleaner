@@ -45,8 +45,8 @@ object QualityAnalyzer {
     }
 
     // Sharpness thresholds
-    private const val SHARPNESS_THRESHOLD = 0.60f        // Below = blurry (top-quartile score)
-    private const val CENTER_SHARPNESS_THRESHOLD = 0.40f // Below = center is out of focus (catches misfocused photos)
+    private const val SHARPNESS_THRESHOLD = 0.50f        // Below = blurry (top-quartile score)
+    private const val CENTER_SHARPNESS_THRESHOLD = 0.35f // Below = center is out of focus (catches misfocused photos)
 
     // Tiled Laplacian constants
     private const val QUALITY_GRID_SIZE = 4              // 4x4 grid of tiles
@@ -60,7 +60,8 @@ object QualityAnalyzer {
     private const val MIN_TEXTURED_TILES = 2             // Need at least 2 textured tiles to judge blur (otherwise image is mostly uniform)
 
     // Motion blur detection
-    private const val MOTION_BLUR_RATIO_THRESHOLD = 5.0  // Gradient ratio above this = directional blur (5.0 avoids false positives on buildings/stripes)
+    private const val MOTION_BLUR_RATIO_THRESHOLD = 5.0        // Gradient ratio above this = directional blur (when already below sharpness threshold)
+
 
     // Exposure thresholds
     private const val DARK_THRESHOLD = 0.10f           // Below = skip blur check (too dark to judge sharpness)
@@ -133,7 +134,7 @@ object QualityAnalyzer {
      * All pixels are bulk-read once and luminance is pre-computed to avoid
      * per-pixel JNI overhead from getPixel().
      */
-    fun analyze(bitmap: Bitmap): QualityResult {
+    fun analyze(bitmap: Bitmap, debugLabel: String = ""): QualityResult {
         val width = bitmap.width
         val height = bitmap.height
         val totalPixels = width * height
@@ -203,13 +204,14 @@ object QualityAnalyzer {
                         issues.add(QualityIssue.BLURRY)
                     }
                 }
-            } else if (sharpnessResult.centerScore < CENTER_SHARPNESS_THRESHOLD) {
-                // Overall top-quartile passed (edges are sharp), but center is blurry.
-                // This catches misfocused photos where autofocus locked on background/edges
-                // instead of the subject in the center of the frame.
+            } else if (sharpness < 0.65f && sharpnessResult.centerScore < CENTER_SHARPNESS_THRESHOLD) {
+                // Overall sharpness is marginal AND center is blurry — likely misfocused.
+                // Only applies when overall sharpness is below 0.65: if the photo is sharp
+                // enough overall (e.g. 0.80+), the soft center is likely intentional
+                // (bokeh, off-center composition, dark center area).
                 if (DEBUG) {
                     android.util.Log.d("QualityAnalyzer",
-                        "Center blur: overall=$sharpness passed, but centerScore=${sharpnessResult.centerScore} < $CENTER_SHARPNESS_THRESHOLD")
+                        "Center blur: overall=$sharpness < 0.65 AND centerScore=${sharpnessResult.centerScore} < $CENTER_SHARPNESS_THRESHOLD")
                 }
                 issues.add(QualityIssue.BLURRY)
             }
@@ -233,8 +235,9 @@ object QualityAnalyzer {
         val overallQuality = (baseQuality - penalty).coerceIn(0f, 1f)
 
         if (DEBUG) {
+            val tag = if (debugLabel.isNotEmpty()) "[$debugLabel] " else ""
             android.util.Log.d("QualityAnalyzer",
-                "sharpness=${"%.3f".format(sharpness)}, centerScore=${"%.3f".format(sharpnessResult.centerScore)}, " +
+                "${tag}sharpness=${"%.3f".format(sharpness)}, centerScore=${"%.3f".format(sharpnessResult.centerScore)}, " +
                 "texturedTiles=${sharpnessResult.texturedTileCount}/16, edgeDensity=${"%.3f".format(sharpnessResult.edgeDensity)}, " +
                 "maxTileVar=${"%.1f".format(sharpnessResult.maxTileVariance)}, meanTileVar=${"%.1f".format(sharpnessResult.meanTileVariance)}, " +
                 "exposure=${"%.2f".format(exposure)}, brightness=${"%.2f".format(avgBrightness)}, " +
@@ -420,7 +423,7 @@ object QualityAnalyzer {
      *
      * Samples every 2nd pixel for performance (still accurate at 256x256).
      */
-    private fun detectMotionBlur(lum: IntArray, width: Int, height: Int): Boolean {
+    private fun detectMotionBlur(lum: IntArray, width: Int, height: Int, ratioThreshold: Double = MOTION_BLUR_RATIO_THRESHOLD): Boolean {
         if (width < 3 || height < 3) return false
 
         var sobelXSum = 0.0
@@ -475,7 +478,7 @@ object QualityAnalyzer {
                 "Motion blur: sobelXVar=${"%.1f".format(sobelXVariance)}, sobelYVar=${"%.1f".format(sobelYVariance)}, ratio=${"%.2f".format(ratio)}")
         }
 
-        return ratio > MOTION_BLUR_RATIO_THRESHOLD
+        return ratio > ratioThreshold
     }
 
     /**
@@ -583,7 +586,6 @@ object QualityAnalyzer {
     private fun isScreenshot(pixels: IntArray, totalPixels: Int): Boolean {
         val colorCounts = mutableMapOf<Int, Int>()
         var pureWhiteCount = 0
-        var pureBlackCount = 0
 
         for (i in 0 until totalPixels) {
             val pixel = pixels[i]
@@ -595,10 +597,6 @@ object QualityAnalyzer {
             if (r > 245 && g > 245 && b > 245) {
                 pureWhiteCount++
             }
-            // Count near-pure black pixels (RGB < 10)
-            if (r < 10 && g < 10 && b < 10) {
-                pureBlackCount++
-            }
 
             // Quantize for color variety check (inline for speed)
             val quantized = ((r / 32) * 32 shl 16) or ((g / 32) * 32 shl 8) or ((b / 32) * 32)
@@ -606,23 +604,23 @@ object QualityAnalyzer {
         }
 
         val pureWhiteRatio = pureWhiteCount.toFloat() / totalPixels
-        val pureBlackRatio = pureBlackCount.toFloat() / totalPixels
         val uniqueColors = colorCounts.size
 
         // Screenshot if:
-        // 1. >35% pure white or black (solid background with text/icons), OR
-        // 2. Very limited palette (<60 unique colors) — UI graphics, OR
-        // 3. Moderate solid background (>25%) AND limited palette (<120 colors)
-        val hasSolidBackground = pureWhiteRatio > 0.35f || pureBlackRatio > 0.35f
-        val hasVeryLimitedPalette = uniqueColors < 60
-        val hasModerateSolidAndLimitedColors =
-            (pureWhiteRatio > 0.25f || pureBlackRatio > 0.25f) && uniqueColors < 120
+        // 1. >35% pure white (solid light background — photos rarely have this), OR
+        // 2. Moderate white background (>25%) AND limited palette (<120 colors)
+        // Note: palette-only check (uniqueColors < 60) was removed — at 32-step quantization,
+        // dark/blurry photos have few color buckets too, causing false positives that
+        // block blur detection. Dark-mode screenshots are missed but that's acceptable:
+        // they're sharp (won't trigger blur) and have high p99 (won't trigger underexposed).
+        val hasSolidWhiteBackground = pureWhiteRatio > 0.35f
+        val hasModerateWhiteAndLimitedColors = pureWhiteRatio > 0.25f && uniqueColors < 120
 
-        val isScreenshot = hasSolidBackground || hasVeryLimitedPalette || hasModerateSolidAndLimitedColors
+        val isScreenshot = hasSolidWhiteBackground || hasModerateWhiteAndLimitedColors
 
         if (DEBUG && isScreenshot) {
             android.util.Log.d("QualityAnalyzer",
-                "Screenshot detected: white=${"%.2f".format(pureWhiteRatio)}, black=${"%.2f".format(pureBlackRatio)}, colors=$uniqueColors")
+                "Screenshot detected: white=${"%.2f".format(pureWhiteRatio)}, colors=$uniqueColors")
         }
 
         return isScreenshot

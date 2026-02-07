@@ -73,7 +73,13 @@ class DuplicateScanWorker(
         // Version 20: p99 + avgBrightness gate for underexposed
         // Version 21: Remove screenshot gate from darkness checks (p99 handles dark screenshots naturally), lower thresholds (p99<100, avg<0.25)
         // Version 22: Merge VERY_DARK into UNDEREXPOSED ("Too Dark"), stricter thresholds (p99<80, avg<0.20) to avoid screenshot false positives
-        const val CURRENT_ALGORITHM_VERSION = 22
+        // Version 23: Lower blur threshold (0.60→0.55), detect strong motion blur even when sharpness passes (ratio>8.0)
+        // Version 24: Remove black ratio from screenshot detector entirely (dark photos overlap too much), lower blur thresholds (0.50/0.35)
+        // Version 25: Remove palette-only screenshot detection (dark/blurry photos have few quantized colors too),
+        //   gate center-blur check on sharpness<0.65 (off-center compositions are not misfocused),
+        //   remove strong motion blur check (directional content like buildings/stripes causes false positives),
+        //   add debug labels (photo filename) to quality analyzer logs
+        const val CURRENT_ALGORITHM_VERSION = 25
 
         // Progress data keys
         const val KEY_PROGRESS = "progress"
@@ -328,6 +334,7 @@ class DuplicateScanWorker(
 
                 photos.add(PhotoInfo(
                     uri = uri,
+                    displayName = displayName,
                     size = cursor.getLong(sizeColumn),
                     width = effectiveWidth,
                     height = effectiveHeight,
@@ -399,7 +406,7 @@ class DuplicateScanWorker(
         val qualityBitmap = ImageHasher.loadBitmapForQuality(applicationContext, Uri.parse(photo.uri))
         val qualityResult = if (qualityBitmap != null) {
             try {
-                QualityAnalyzer.analyze(qualityBitmap)
+                QualityAnalyzer.analyze(qualityBitmap, photo.displayName)
             } finally {
                 qualityBitmap.recycle()
             }
@@ -619,6 +626,7 @@ class DuplicateScanWorker(
      */
     private data class PhotoInfo(
         val uri: String,
+        val displayName: String,
         val size: Long,
         val width: Int,
         val height: Int,
