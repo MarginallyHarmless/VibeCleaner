@@ -25,6 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -43,6 +46,8 @@ import com.example.photocleanup.data.MenuMode
 import com.example.photocleanup.ui.components.HeroCard
 import com.example.photocleanup.ui.components.MenuCard
 import com.example.photocleanup.ui.components.MenuCardType
+import com.example.photocleanup.ui.components.PremiumOverlay
+import com.example.photocleanup.ui.components.PremiumUpsellSheet
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.AccentPrimaryDim
 import com.example.photocleanup.viewmodel.MenuViewModel
@@ -62,6 +67,7 @@ fun MenuScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showUpsellSheet by remember { mutableStateOf(false) }
 
     val isPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         val permissionsState = rememberMultiplePermissionsState(
@@ -188,28 +194,34 @@ fun MenuScreen(
                                                     },
                                                     modifier = Modifier.weight(1f)
                                                 )
-                                                HeroCard(
-                                                    title = stringResource(R.string.menu_random),
-                                                    icon = Icons.Default.Shuffle,
-                                                    reviewedCount = stats.reviewedCount,
-                                                    totalCount = stats.totalCount,
-                                                    thumbnailUri = uiState.randomMediaUri,
-                                                    showLock = !viewModel.isPremium,
-                                                    onClick = {
-                                                        if (viewModel.isPremium) {
-                                                            onNavigateToSwipe(
-                                                                MenuFilter(
-                                                                    mode = MenuMode.BY_DATE,
-                                                                    isRandom = true,
-                                                                    randomStartUri = uiState.randomMediaUri?.toString(),
-                                                                    displayTitle = "Random"
-                                                                )
-                                                            )
-                                                        }
-                                                        // TODO: Show upsell dialog when not premium
-                                                    },
+                                                PremiumOverlay(
+                                                    isLocked = !viewModel.isPremium,
+                                                    onLockedClick = { showUpsellSheet = true },
                                                     modifier = Modifier.weight(1f)
-                                                )
+                                                ) {
+                                                    HeroCard(
+                                                        title = stringResource(R.string.menu_random),
+                                                        icon = Icons.Default.Shuffle,
+                                                        reviewedCount = stats.reviewedCount,
+                                                        totalCount = stats.totalCount,
+                                                        thumbnailUri = uiState.randomMediaUri,
+                                                        showLock = false,
+                                                        onClick = {
+                                                            if (viewModel.isPremium) {
+                                                                onNavigateToSwipe(
+                                                                    MenuFilter(
+                                                                        mode = MenuMode.BY_DATE,
+                                                                        isRandom = true,
+                                                                        randomStartUri = uiState.randomMediaUri?.toString(),
+                                                                        displayTitle = "Random"
+                                                                    )
+                                                                )
+                                                            } else {
+                                                                showUpsellSheet = true
+                                                            }
+                                                        }
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -270,6 +282,14 @@ fun MenuScreen(
                     }
                 }
             }
+        }
+
+        if (showUpsellSheet) {
+            PremiumUpsellSheet(
+                onDismiss = { showUpsellSheet = false },
+                onUnlockClick = { showUpsellSheet = false },
+                onRestoreClick = { showUpsellSheet = false }
+            )
         }
     }
 }

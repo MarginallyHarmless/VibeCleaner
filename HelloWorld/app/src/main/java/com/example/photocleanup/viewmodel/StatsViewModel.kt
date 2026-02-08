@@ -76,6 +76,7 @@ data class StatsUiState(
 )
 
 class StatsViewModel(application: Application) : AndroidViewModel(application) {
+    val isPremium: Boolean get() = (getApplication<PhotoCleanupApp>()).appPreferences.isPremium
 
     private val database = (application as PhotoCleanupApp).database
     private val reviewedPhotoDao = database.reviewedPhotoDao()

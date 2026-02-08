@@ -62,6 +62,8 @@ import com.example.photocleanup.data.MenuFilter
 import com.example.photocleanup.ui.components.AlbumSelector
 import com.example.photocleanup.ui.components.AppButton
 import com.example.photocleanup.ui.components.ButtonVariant
+import com.example.photocleanup.ui.components.PremiumOverlay
+import com.example.photocleanup.ui.components.PremiumUpsellSheet
 import com.example.photocleanup.ui.components.DialogButton
 import com.example.photocleanup.ui.components.DialogButtonIntent
 import com.example.photocleanup.ui.components.ProgressIndicator
@@ -87,6 +89,7 @@ fun MainScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    var showUpsellSheet by remember { mutableStateOf(false) }
 
     // Track undo entry animation direction for the specific photo
     var undoPhotoKey by remember { mutableStateOf<Uri?>(null) }
@@ -307,19 +310,32 @@ fun MainScreen(
                                 }
 
                                 // Album selector at bottom
-                                AlbumSelector(
-                                    albums = uiState.availableFolders,
-                                    currentAlbumId = uiState.currentPhotoAlbum?.bucketId,
-                                    onAlbumSelected = { viewModel.movePhotoToAlbum(it) },
-                                    isMoving = uiState.isMovingPhoto,
-                                    listState = albumListState,
-                                    modifier = Modifier.padding(bottom = 32.dp)
-                                )
+                                PremiumOverlay(
+                                    isLocked = !viewModel.isPremium,
+                                    onLockedClick = { showUpsellSheet = true }
+                                ) {
+                                    AlbumSelector(
+                                        albums = uiState.availableFolders,
+                                        currentAlbumId = uiState.currentPhotoAlbum?.bucketId,
+                                        onAlbumSelected = { viewModel.movePhotoToAlbum(it) },
+                                        isMoving = uiState.isMovingPhoto,
+                                        listState = albumListState,
+                                        modifier = Modifier.padding(bottom = 32.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+
+        if (showUpsellSheet) {
+            PremiumUpsellSheet(
+                onDismiss = { showUpsellSheet = false },
+                onUnlockClick = { showUpsellSheet = false },
+                onRestoreClick = { showUpsellSheet = false }
+            )
         }
     }
 }

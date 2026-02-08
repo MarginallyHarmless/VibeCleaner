@@ -65,6 +65,7 @@ data class PhotoUiState(
 class PhotoViewModel(application: Application) : AndroidViewModel(application) {
     private val database = (application as PhotoCleanupApp).database
     private val appPreferences = (application as PhotoCleanupApp).appPreferences
+    val isPremium: Boolean get() = appPreferences.isPremium
     private val repository = PhotoRepository(
         application,
         database.reviewedPhotoDao(),

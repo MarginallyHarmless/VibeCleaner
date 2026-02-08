@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.PhotoSizeSelectLarge
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +36,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +47,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.photocleanup.ui.components.DetailStatRow
 import com.example.photocleanup.ui.components.HeroStatPod
+import com.example.photocleanup.ui.components.PremiumOverlay
+import com.example.photocleanup.ui.components.PremiumUpsellSheet
 import com.example.photocleanup.ui.components.MilestoneSection
 import com.example.photocleanup.ui.components.QualityBreakdownChart
 import com.example.photocleanup.ui.components.RatioBar
@@ -53,6 +59,8 @@ import com.example.photocleanup.ui.components.formatBytes
 import com.example.photocleanup.ui.components.formatNumber
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.DarkSurfaceVariant
+import com.example.photocleanup.viewmodel.DailyProgress
+import com.example.photocleanup.viewmodel.Milestone
 import com.example.photocleanup.viewmodel.StatsViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -64,6 +72,7 @@ fun StatsScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showUpsellSheet by remember { mutableStateOf(false) }
 
     if (uiState.isLoading) {
         Column(
@@ -176,96 +185,239 @@ fun StatsScreen(
             }
         }
 
-        // Review progress chart
-        if (uiState.progressByDay.size >= 2) {
+        // Premium-locked section: Review Progress through Milestones
+        if (viewModel.isPremium) {
+            // Review progress chart
+            if (uiState.progressByDay.size >= 2) {
+                item {
+                    ReviewProgressChart(data = uiState.progressByDay)
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
+
+            // Quality breakdown chart
+            if (uiState.qualityDistribution.values.sum() > 0) {
+                item {
+                    QualityBreakdownChart(data = uiState.qualityDistribution)
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
+
+            // Detail card: Duplicates & Quality
             item {
-                ReviewProgressChart(data = uiState.progressByDay)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(DarkSurfaceVariant)
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Duplicates & Quality",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    DetailStatRow(
+                        icon = Icons.Rounded.ContentCopy,
+                        label = "Duplicate groups found",
+                        value = formatNumber(uiState.duplicateGroupsFound)
+                    )
+                    DetailStatRow(
+                        icon = Icons.Rounded.FolderOpen,
+                        label = "Extra copies found",
+                        value = formatNumber(uiState.duplicatesRemoved)
+                    )
+                    DetailStatRow(
+                        icon = Icons.Rounded.Warning,
+                        label = "Low-quality flagged",
+                        value = formatNumber(uiState.lowQualityFlagged)
+                    )
+                }
                 Spacer(modifier = Modifier.height(12.dp))
             }
-        }
 
-        // Quality breakdown chart
-        if (uiState.qualityDistribution.values.sum() > 0) {
+            // Detail card: Records
             item {
-                QualityBreakdownChart(data = uiState.qualityDistribution)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(DarkSurfaceVariant)
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Records",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    DetailStatRow(
+                        icon = Icons.Rounded.PhotoSizeSelectLarge,
+                        label = "Largest file deleted",
+                        value = if (uiState.largestFileDeletedSize > 0) formatBytes(uiState.largestFileDeletedSize) else "-"
+                    )
+                    DetailStatRow(
+                        icon = Icons.Rounded.LocalFireDepartment,
+                        label = "Review streak",
+                        value = "${uiState.longestStreak} day${if (uiState.longestStreak != 1) "s" else ""}"
+                    )
+                    DetailStatRow(
+                        icon = Icons.Rounded.CalendarToday,
+                        label = "Using since",
+                        value = if (uiState.usingSince > 0) {
+                            SimpleDateFormat("MMM d, yyyy", Locale.US).format(Date(uiState.usingSince))
+                        } else "-"
+                    )
+                }
                 Spacer(modifier = Modifier.height(12.dp))
             }
-        }
 
-        // Detail card: Duplicates & Quality
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(DarkSurfaceVariant)
-                    .padding(16.dp)
-            ) {
-                Text(
-                    text = "Duplicates & Quality",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold
-                )
-                DetailStatRow(
-                    icon = Icons.Rounded.ContentCopy,
-                    label = "Duplicate groups found",
-                    value = formatNumber(uiState.duplicateGroupsFound)
-                )
-                DetailStatRow(
-                    icon = Icons.Rounded.FolderOpen,
-                    label = "Extra copies found",
-                    value = formatNumber(uiState.duplicatesRemoved)
-                )
-                DetailStatRow(
-                    icon = Icons.Rounded.Warning,
-                    label = "Low-quality flagged",
-                    value = formatNumber(uiState.lowQualityFlagged)
-                )
+            // Milestones
+            if (uiState.milestones.isNotEmpty()) {
+                item {
+                    MilestoneSection(milestones = uiState.milestones)
+                    Spacer(modifier = Modifier.height(80.dp)) // nav bar clearance
+                }
             }
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-
-        // Detail card: Records
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(DarkSurfaceVariant)
-                    .padding(16.dp)
-            ) {
-                Text(
-                    text = "Records",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold
-                )
-                DetailStatRow(
-                    icon = Icons.Rounded.PhotoSizeSelectLarge,
-                    label = "Largest file deleted",
-                    value = if (uiState.largestFileDeletedSize > 0) formatBytes(uiState.largestFileDeletedSize) else "-"
-                )
-                DetailStatRow(
-                    icon = Icons.Rounded.LocalFireDepartment,
-                    label = "Review streak",
-                    value = "${uiState.longestStreak} day${if (uiState.longestStreak != 1) "s" else ""}"
-                )
-                DetailStatRow(
-                    icon = Icons.Rounded.CalendarToday,
-                    label = "Using since",
-                    value = if (uiState.usingSince > 0) {
-                        SimpleDateFormat("MMM d, yyyy", Locale.US).format(Date(uiState.usingSince))
-                    } else "-"
-                )
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-
-        // Milestones
-        if (uiState.milestones.isNotEmpty()) {
+        } else {
+            // Locked: show sample data so users see what premium stats look like
             item {
-                MilestoneSection(milestones = uiState.milestones)
+                PremiumOverlay(
+                    isLocked = true,
+                    onLockedClick = { showUpsellSheet = true }
+                ) {
+                    ReviewProgressChart(data = sampleProgressData)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            item {
+                PremiumOverlay(
+                    isLocked = true,
+                    onLockedClick = { showUpsellSheet = true }
+                ) {
+                    QualityBreakdownChart(data = sampleQualityData)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            item {
+                PremiumOverlay(
+                    isLocked = true,
+                    onLockedClick = { showUpsellSheet = true }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(DarkSurfaceVariant)
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Duplicates & Quality",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        DetailStatRow(
+                            icon = Icons.Rounded.ContentCopy,
+                            label = "Duplicate groups found",
+                            value = "24"
+                        )
+                        DetailStatRow(
+                            icon = Icons.Rounded.FolderOpen,
+                            label = "Extra copies found",
+                            value = "87"
+                        )
+                        DetailStatRow(
+                            icon = Icons.Rounded.Warning,
+                            label = "Low-quality flagged",
+                            value = "31"
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            item {
+                PremiumOverlay(
+                    isLocked = true,
+                    onLockedClick = { showUpsellSheet = true }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(DarkSurfaceVariant)
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Records",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        DetailStatRow(
+                            icon = Icons.Rounded.PhotoSizeSelectLarge,
+                            label = "Largest file deleted",
+                            value = "14.2 MB"
+                        )
+                        DetailStatRow(
+                            icon = Icons.Rounded.LocalFireDepartment,
+                            label = "Review streak",
+                            value = "7 days"
+                        )
+                        DetailStatRow(
+                            icon = Icons.Rounded.CalendarToday,
+                            label = "Using since",
+                            value = "Jan 15, 2026"
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            item {
+                PremiumOverlay(
+                    isLocked = true,
+                    onLockedClick = { showUpsellSheet = true }
+                ) {
+                    MilestoneSection(milestones = sampleMilestones)
+                }
                 Spacer(modifier = Modifier.height(80.dp)) // nav bar clearance
             }
         }
     }
+
+    if (showUpsellSheet) {
+        PremiumUpsellSheet(
+            onDismiss = { showUpsellSheet = false },
+            onUnlockClick = { showUpsellSheet = false },
+            onRestoreClick = { showUpsellSheet = false }
+        )
+    }
 }
+
+// Sample data for locked premium preview
+private val sampleProgressData = listOf(
+    DailyProgress("2026-01-01", 2480, 0),
+    DailyProgress("2026-01-08", 2520, 120),
+    DailyProgress("2026-01-15", 2560, 310),
+    DailyProgress("2026-01-22", 2610, 580),
+    DailyProgress("2026-01-29", 2640, 890),
+    DailyProgress("2026-02-05", 2700, 1240)
+)
+
+private val sampleQualityData = mapOf(
+    "Sharp" to 1842,
+    "Slightly Soft" to 326,
+    "Blurry" to 89,
+    "Too Dark" to 47,
+    "Screenshot" to 156
+)
+
+private val sampleMilestones = listOf(
+    Milestone("First Swipe", "Review your first photo", Icons.Rounded.TouchApp, 1, 1, 1706400000000L, "Photos"),
+    Milestone("Getting Started", "Review 100 photos", Icons.Rounded.Photo, 100, 100, 1706900000000L, "Photos"),
+    Milestone("Photo Pro", "Review 500 photos", Icons.Rounded.Star, 500, 500, 1707800000000L, "Photos"),
+    Milestone("Space Saver", "Recover 100 MB", Icons.Rounded.SaveAlt, 100L * 1024 * 1024, 100L * 1024 * 1024, 1707200000000L, "Space"),
+    Milestone("Day One", "First app use", Icons.Rounded.LocalFireDepartment, 1, 1, 1706400000000L, "Streak"),
+    Milestone("3-Day Streak", "3 consecutive days", Icons.Rounded.LocalFireDepartment, 3, 3, 1706700000000L, "Streak")
+)

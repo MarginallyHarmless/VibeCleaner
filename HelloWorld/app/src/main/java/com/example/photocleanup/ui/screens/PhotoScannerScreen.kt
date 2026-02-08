@@ -66,9 +66,11 @@ import com.example.photocleanup.data.DuplicateGroupWithPhotos
 import com.example.photocleanup.data.PhotoHash
 import com.example.photocleanup.data.PhotoScannerTab
 import com.example.photocleanup.data.ScanState
+import androidx.compose.material.icons.filled.Lock
 import com.example.photocleanup.ui.components.AppButton
 import com.example.photocleanup.ui.components.AppFab
 import com.example.photocleanup.ui.components.ButtonIntent
+import com.example.photocleanup.ui.components.PremiumUpsellSheet
 import com.example.photocleanup.ui.components.DialogButton
 import com.example.photocleanup.ui.components.DialogButtonIntent
 import com.example.photocleanup.ui.components.DuplicateGroupCard
@@ -159,6 +161,7 @@ fun PhotoScannerScreen(
 
     // State for fullscreen photo preview (long-press)
     var fullscreenPhoto by remember { mutableStateOf<FullscreenPhotoInfo?>(null) }
+    var showUpsellSheet by remember { mutableStateOf(false) }
 
     if (!isPermissionGranted) {
         PermissionScreen(
@@ -223,7 +226,10 @@ fun PhotoScannerScreen(
                             duplicateGroups = duplicateGroups,
                             groupCount = groupCount,
                             selectedPhotoIds = selectedPhotoIds,
-                            onPhotoSelect = { viewModel.togglePhotoSelection(it) },
+                            onPhotoSelect = {
+                                if (viewModel.isPremium) viewModel.togglePhotoSelection(it)
+                                else showUpsellSheet = true
+                            },
                             onLongPressPhoto = { info -> fullscreenPhoto = info },
                             onLongPressRelease = { fullscreenPhoto = null },
                             onStartScan = { viewModel.startScan() },
@@ -236,7 +242,10 @@ fun PhotoScannerScreen(
                             lowQualityPhotos = lowQualityPhotos,
                             lowQualityCount = lowQualityCount,
                             selectedUris = selectedLowQualityUris,
-                            onToggleSelection = { viewModel.toggleLowQualitySelection(it) },
+                            onToggleSelection = {
+                                if (viewModel.isPremium) viewModel.toggleLowQualitySelection(it)
+                                else showUpsellSheet = true
+                            },
                             onLongPressPhoto = { info -> fullscreenPhoto = info },
                             onLongPressRelease = { fullscreenPhoto = null },
                             onStartScan = { viewModel.startScan() },
@@ -257,7 +266,15 @@ fun PhotoScannerScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (selectedPhotoIds.isNotEmpty()) {
+                            if (!viewModel.isPremium) {
+                                AppButton(
+                                    text = "Delete",
+                                    onClick = { showUpsellSheet = true },
+                                    intent = ButtonIntent.Destructive,
+                                    leadingIcon = Icons.Filled.Lock,
+                                    fillWidth = false
+                                )
+                            } else if (selectedPhotoIds.isNotEmpty()) {
                                 AppButton(
                                     text = "Delete ${selectedPhotoIds.size} photos",
                                     onClick = {
@@ -285,7 +302,15 @@ fun PhotoScannerScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (selectedLowQualityUris.isNotEmpty()) {
+                            if (!viewModel.isPremium) {
+                                AppButton(
+                                    text = "Delete",
+                                    onClick = { showUpsellSheet = true },
+                                    intent = ButtonIntent.Destructive,
+                                    leadingIcon = Icons.Filled.Lock,
+                                    fillWidth = false
+                                )
+                            } else if (selectedLowQualityUris.isNotEmpty()) {
                                 AppButton(
                                     text = "Delete ${selectedLowQualityUris.size} photos",
                                     onClick = {
@@ -314,6 +339,14 @@ fun PhotoScannerScreen(
                     onDismiss = { fullscreenPhoto = null }
                 )
             }
+        }
+
+        if (showUpsellSheet) {
+            PremiumUpsellSheet(
+                onDismiss = { showUpsellSheet = false },
+                onUnlockClick = { showUpsellSheet = false },
+                onRestoreClick = { showUpsellSheet = false }
+            )
         }
     }
 }

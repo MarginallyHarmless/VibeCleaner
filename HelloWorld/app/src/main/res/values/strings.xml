@@ -8,4 +8,26 @@
     <string name="menu_by_album">By Album</string>
     <string name="menu_all_media">All Media</string>
     <string name="menu_random">Random</string>
+
+    <!-- Premium -->
+    <string name="premium_unlock_title">Unlock Premium</string>
+    <string name="premium_unlock_subtitle">Get the full experience</string>
+    <string name="premium_unlock_button">Unlock Premium</string>
+    <string name="premium_restore">Restore Purchase</string>
+
+    <string name="premium_feature_video_title">Video Support</string>
+    <string name="premium_feature_video_desc">Swipe and organize your videos too</string>
+    <string name="premium_feature_shuffle_title">Random Shuffle</string>
+    <string name="premium_feature_shuffle_desc">Review photos in a fun random order</string>
+    <string name="premium_feature_albums_title">Album Organization</string>
+    <string name="premium_feature_albums_desc">Move photos between albums while swiping</string>
+    <string name="premium_feature_scanner_title">Smart Scanner</string>
+    <string name="premium_feature_scanner_desc">Select and delete duplicates and low-quality photos</string>
+    <string name="premium_feature_stats_title">Full Statistics</string>
+    <string name="premium_feature_stats_desc">Charts, milestones, and detailed insights</string>
+
+    <string name="premium_settings_upgrade_title">Upgrade to Premium</string>
+    <string name="premium_settings_upgrade_subtitle">Unlock all features and remove limits</string>
+    <string name="premium_settings_unlocked_title">Premium Unlocked</string>
+    <string name="premium_settings_unlocked_subtitle">Thank you for your support!</string>
 </resources>

@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
  * Manages both duplicate detection and low quality photo functionality.
  */
 class PhotoScannerViewModel(application: Application) : AndroidViewModel(application) {
+    val isPremium: Boolean get() = (getApplication<PhotoCleanupApp>()).appPreferences.isPremium
 
     private val database = (application as PhotoCleanupApp).database
     private val photoHashDao = database.photoHashDao()
