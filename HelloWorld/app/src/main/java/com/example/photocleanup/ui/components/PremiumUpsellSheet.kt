@@ -133,7 +133,15 @@ fun PremiumUpsellSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = stringResource(R.string.premium_one_time),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Restore purchase
             TextButton(onClick = onRestoreClick) {

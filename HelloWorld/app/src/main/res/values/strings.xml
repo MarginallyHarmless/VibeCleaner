@@ -12,7 +12,8 @@
     <!-- Premium -->
     <string name="premium_unlock_title">Unlock Premium</string>
     <string name="premium_unlock_subtitle">Get the full experience</string>
-    <string name="premium_unlock_button">Unlock Premium</string>
+    <string name="premium_unlock_button">Unlock Premium — $4.99</string>
+    <string name="premium_one_time">One-time purchase</string>
     <string name="premium_restore">Restore Purchase</string>
 
     <string name="premium_feature_video_title">Video Support</string>
