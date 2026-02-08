@@ -8,6 +8,7 @@
 
     <!-- For Android 13+ -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
     <!-- For deleting photos (Android 10 and below) -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"

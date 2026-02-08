@@ -47,6 +47,7 @@ import com.example.photocleanup.ui.theme.AccentPrimaryDim
 import com.example.photocleanup.viewmodel.MenuViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.accompanist.permissions.rememberPermissionState
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -58,14 +59,17 @@ fun MenuScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_IMAGES
+    val isPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val permissionsState = rememberMultiplePermissionsState(
+            listOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+        )
+        permissionsState.allPermissionsGranted
     } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
+        val permissionState = rememberPermissionState(Manifest.permission.READ_EXTERNAL_STORAGE)
+        permissionState.status.isGranted
     }
-    val permissionState = rememberPermissionState(permission)
 
-    if (!permissionState.status.isGranted) {
+    if (!isPermissionGranted) {
         PermissionScreen(
             onPermissionGranted = { viewModel.loadMenuData() }
         )

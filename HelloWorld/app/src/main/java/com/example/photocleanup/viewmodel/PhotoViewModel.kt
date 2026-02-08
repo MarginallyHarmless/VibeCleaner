@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.photocleanup.PhotoCleanupApp
 import com.example.photocleanup.data.DateRangeFilter
 import com.example.photocleanup.data.FolderInfo
+import com.example.photocleanup.data.MediaItem
 import com.example.photocleanup.data.MenuFilter
 import com.example.photocleanup.data.MoveResult
 import com.example.photocleanup.data.PhotoFilter
@@ -24,13 +25,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class UndoableAction(
-    val photo: Uri,
+    val photo: MediaItem,
     val action: String,
     val previousIndex: Int
 )
 
 data class PhotoUiState(
-    val photos: List<Uri> = emptyList(),
+    val photos: List<MediaItem> = emptyList(),
     val currentIndex: Int = 0,
     val isLoading: Boolean = true,
     val totalPhotosCount: Int = 0,
@@ -53,8 +54,8 @@ data class PhotoUiState(
     // Menu filter state
     val menuFilter: MenuFilter? = null,
 ) {
-    val currentPhoto: Uri? get() = photos.getOrNull(currentIndex)
-    val nextPhoto: Uri? get() = photos.getOrNull(currentIndex + 1)
+    val currentPhoto: MediaItem? get() = photos.getOrNull(currentIndex)
+    val nextPhoto: MediaItem? get() = photos.getOrNull(currentIndex + 1)
     val hasPhotos: Boolean get() = photos.isNotEmpty()
     val isAllDone: Boolean get() = !isLoading && photos.isEmpty()
     val hasActiveFilters: Boolean get() = filter.selectedFolders.isNotEmpty() || filter.dateRange != DateRangeFilter.ALL
@@ -63,7 +64,12 @@ data class PhotoUiState(
 
 class PhotoViewModel(application: Application) : AndroidViewModel(application) {
     private val database = (application as PhotoCleanupApp).database
-    private val repository = PhotoRepository(application, database.reviewedPhotoDao())
+    private val appPreferences = (application as PhotoCleanupApp).appPreferences
+    private val repository = PhotoRepository(
+        application,
+        database.reviewedPhotoDao(),
+        includeVideos = appPreferences.isVideosUnlocked
+    )
 
     private val _uiState = MutableStateFlow(PhotoUiState())
     val uiState: StateFlow<PhotoUiState> = _uiState.asStateFlow()
@@ -92,11 +98,20 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Register content observer to detect new photos
-        getApplication<PhotoCleanupApp>().contentResolver.registerContentObserver(
+        val app = getApplication<PhotoCleanupApp>()
+        app.contentResolver.registerContentObserver(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             true,
             contentObserver
         )
+        // Also observe video store if videos are unlocked
+        if (appPreferences.isVideosUnlocked) {
+            app.contentResolver.registerContentObserver(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                true,
+                contentObserver
+            )
+        }
     }
 
     override fun onCleared() {
@@ -110,7 +125,7 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
             val filter = _uiState.value.filter
             val filteredPhotos = repository.loadFilteredPhotos(filter)
             val reviewedUris = repository.getReviewedUris()
-            val unreviewedPhotos = filteredPhotos.filter { it.toString() !in reviewedUris }
+            val unreviewedPhotos = filteredPhotos.filter { it.uri.toString() !in reviewedUris }
             _uiState.value = _uiState.value.copy(
                 photos = unreviewedPhotos,
                 currentIndex = 0,
@@ -196,7 +211,7 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
         val currentPhoto = _uiState.value.currentPhoto ?: return
         val currentIndex = _uiState.value.currentIndex
         viewModelScope.launch {
-            repository.markAsReviewed(currentPhoto, "keep")
+            repository.markAsReviewed(currentPhoto.uri, "keep")
             _uiState.value = _uiState.value.copy(
                 lastAction = UndoableAction(currentPhoto, "keep", currentIndex)
             )
@@ -208,7 +223,7 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
         val currentPhoto = _uiState.value.currentPhoto ?: return
         val currentIndex = _uiState.value.currentIndex
         viewModelScope.launch {
-            repository.markAsReviewed(currentPhoto, "to_delete")
+            repository.markAsReviewed(currentPhoto.uri, "to_delete")
             _uiState.value = _uiState.value.copy(
                 lastAction = UndoableAction(currentPhoto, "to_delete", currentIndex)
             )
@@ -219,7 +234,7 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
     fun undoLastAction() {
         val lastAction = _uiState.value.lastAction ?: return
         viewModelScope.launch {
-            repository.removeReview(lastAction.photo)
+            repository.removeReview(lastAction.photo.uri)
             val currentPhotos = _uiState.value.photos.toMutableList()
             currentPhotos.add(lastAction.previousIndex, lastAction.photo)
             _uiState.value = _uiState.value.copy(
@@ -238,16 +253,16 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val deleteRequest = MediaStore.createDeleteRequest(
                 context.contentResolver,
-                listOf(currentPhoto)
+                listOf(currentPhoto.uri)
             )
             _uiState.value = _uiState.value.copy(
-                pendingDeleteUri = currentPhoto,
+                pendingDeleteUri = currentPhoto.uri,
                 deleteIntentSender = deleteRequest.intentSender
             )
             deleteRequest.intentSender
         } else {
             // For Android 10 and below, delete directly
-            deletePhotoDirectly(context.contentResolver, currentPhoto)
+            deletePhotoDirectly(context.contentResolver, currentPhoto.uri)
             null
         }
     }
@@ -318,7 +333,7 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
     fun loadCurrentPhotoAlbum() {
         val currentPhoto = _uiState.value.currentPhoto ?: return
         viewModelScope.launch {
-            val albumInfo = repository.getPhotoAlbumInfo(currentPhoto)
+            val albumInfo = repository.getPhotoAlbumInfo(currentPhoto.uri)
             _uiState.value = _uiState.value.copy(currentPhotoAlbum = albumInfo)
         }
     }
@@ -328,7 +343,7 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
         val sourceAlbumId = _uiState.value.currentPhotoAlbum?.bucketId
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isMovingPhoto = true, moveError = null)
-            when (val result = repository.movePhotoToAlbum(currentPhoto, albumName)) {
+            when (val result = repository.movePhotoToAlbum(currentPhoto.uri, albumName)) {
                 is MoveResult.Success -> {
                     // Update the current photo's album info
                     val newAlbumInfo = repository.getPhotoAlbumInfo(result.newUri)
@@ -376,7 +391,7 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
                     pendingMoveAlbum = null,
                     pendingMoveSourceAlbumId = null
                 )
-                when (val result = repository.completeMoveAfterPermission(currentPhoto, targetAlbum)) {
+                when (val result = repository.completeMoveAfterPermission(currentPhoto.uri, targetAlbum)) {
                     is MoveResult.Success -> {
                         val newAlbumInfo = repository.getPhotoAlbumInfo(result.newUri)
                         _uiState.value = _uiState.value.copy(

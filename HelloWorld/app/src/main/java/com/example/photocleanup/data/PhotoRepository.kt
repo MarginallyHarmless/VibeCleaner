@@ -17,7 +17,8 @@ import java.util.concurrent.TimeUnit
 
 class PhotoRepository(
     private val context: Context,
-    private val reviewedPhotoDao: ReviewedPhotoDao
+    private val reviewedPhotoDao: ReviewedPhotoDao,
+    private val includeVideos: Boolean = false
 ) {
     /**
      * Check if app has full storage access (MANAGE_EXTERNAL_STORAGE permission on Android 11+).
@@ -31,110 +32,95 @@ class PhotoRepository(
             true
         }
     }
-    suspend fun loadAllPhotos(): List<Uri> = withContext(Dispatchers.IO) {
-        val photos = mutableListOf<Uri>()
-        val projection = arrayOf(MediaStore.Images.Media._ID)
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
+    // ==================== Dual-query helpers ====================
+
+    /**
+     * Query a single MediaStore content URI and return (dateAdded, MediaItem) pairs.
+     */
+    private fun querySingleStore(
+        contentUri: Uri,
+        isVideo: Boolean,
+        selection: String? = null,
+        selectionArgs: Array<String>? = null,
+        sortOrder: String? = null
+    ): List<Pair<Long, MediaItem>> {
+        val results = mutableListOf<Pair<Long, MediaItem>>()
+        val baseProjection = mutableListOf(
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.DATE_ADDED
+        )
+        if (isVideo) {
+            baseProjection.add(MediaStore.Video.Media.DURATION)
+        }
 
         context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            null,
-            null,
+            contentUri,
+            baseProjection.toTypedArray(),
+            selection,
+            selectionArgs,
             sortOrder
         )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+            val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+            val durationColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.DURATION) else -1
+
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
-                val uri = ContentUris.withAppendedId(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    id
-                )
-                photos.add(uri)
+                val dateAdded = cursor.getLong(dateColumn)
+                val duration = if (durationColumn >= 0) cursor.getLong(durationColumn) else 0L
+                val uri = ContentUris.withAppendedId(contentUri, id)
+                results.add(dateAdded to MediaItem(uri, isVideo, duration))
             }
         }
-        photos
+        return results
     }
 
-    suspend fun getAvailableFolders(): List<FolderInfo> = withContext(Dispatchers.IO) {
-        val folders = mutableMapOf<Long, Pair<String, Int>>()
-        val projection = arrayOf(
-            MediaStore.Images.Media.BUCKET_ID,
-            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
-            MediaStore.Images.Media.RELATIVE_PATH
-        )
+    /**
+     * Query both image and (optionally) video stores, merge and sort by DATE_ADDED DESC.
+     */
+    private fun queryMediaItems(
+        selection: String? = null,
+        selectionArgs: Array<String>? = null
+    ): List<MediaItem> {
+        val results = mutableListOf<Pair<Long, MediaItem>>()
 
-        context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            null,
-            null,
-            null
-        )?.use { cursor ->
-            val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
-            val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
-            val relativePathColumn = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
+        // Always query images
+        results.addAll(querySingleStore(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, selection, selectionArgs
+        ))
 
-            while (cursor.moveToNext()) {
-                val bucketId = cursor.getLong(bucketIdColumn)
-                var bucketName = cursor.getString(bucketNameColumn)
-
-                // If bucket name is null, empty, or looks like a bucket ID (all digits),
-                // try to extract folder name from relative path
-                if (bucketName.isNullOrBlank() || bucketName.all { it.isDigit() }) {
-                    if (relativePathColumn >= 0) {
-                        val relativePath = cursor.getString(relativePathColumn)
-                        // Relative path is like "DCIM/Camera/" or "Pictures/Screenshots/"
-                        // Extract the last folder name
-                        bucketName = relativePath
-                            ?.trimEnd('/')
-                            ?.substringAfterLast('/')
-                            ?.takeIf { it.isNotBlank() && !it.all { c -> c.isDigit() } }
-                    }
-                }
-
-                // Skip folders that still have invalid names (numeric-only or blank)
-                if (bucketName.isNullOrBlank() || bucketName.all { it.isDigit() }) {
-                    continue
-                }
-
-                val existing = folders[bucketId]
-                if (existing != null) {
-                    folders[bucketId] = existing.first to (existing.second + 1)
-                } else {
-                    folders[bucketId] = bucketName to 1
-                }
-            }
+        // Only query videos if unlocked
+        if (includeVideos) {
+            results.addAll(querySingleStore(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, selection, selectionArgs
+            ))
         }
 
-        folders.map { (id, pair) ->
-            FolderInfo(
-                bucketId = id,
-                displayName = pair.first,
-                photoCount = pair.second
-            )
-        }.sortedBy { it.displayName.lowercase() }  // Alphabetical for stable order
+        return results.sortedByDescending { it.first }.map { it.second }
     }
 
-    suspend fun loadFilteredPhotos(filter: PhotoFilter): List<Uri> = withContext(Dispatchers.IO) {
-        val photos = mutableListOf<Uri>()
-        val projection = arrayOf(MediaStore.Images.Media._ID)
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+    // ==================== Load methods (return MediaItem) ====================
 
+    suspend fun loadAllPhotos(): List<MediaItem> = withContext(Dispatchers.IO) {
+        queryMediaItems()
+    }
+
+    suspend fun loadFilteredPhotos(filter: PhotoFilter): List<MediaItem> = withContext(Dispatchers.IO) {
         val selectionParts = mutableListOf<String>()
         val selectionArgs = mutableListOf<String>()
 
         // Folder filter
         if (filter.selectedFolders.isNotEmpty()) {
             val placeholders = filter.selectedFolders.joinToString(",") { "?" }
-            selectionParts.add("${MediaStore.Images.Media.BUCKET_DISPLAY_NAME} IN ($placeholders)")
+            selectionParts.add("${MediaStore.MediaColumns.BUCKET_DISPLAY_NAME} IN ($placeholders)")
             selectionArgs.addAll(filter.selectedFolders)
         }
 
         // Date range filter
         if (filter.dateRange != DateRangeFilter.ALL) {
             val minTimestamp = getMinTimestampForDateRange(filter.dateRange)
-            selectionParts.add("${MediaStore.Images.Media.DATE_ADDED} >= ?")
+            selectionParts.add("${MediaStore.MediaColumns.DATE_ADDED} >= ?")
             selectionArgs.add(minTimestamp.toString())
         }
 
@@ -146,24 +132,7 @@ class PhotoRepository(
             selectionArgs.toTypedArray()
         } else null
 
-        context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            args,
-            sortOrder
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idColumn)
-                val uri = ContentUris.withAppendedId(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    id
-                )
-                photos.add(uri)
-            }
-        }
-        photos
+        queryMediaItems(selection, args)
     }
 
     private fun getMinTimestampForDateRange(dateRange: DateRangeFilter): Long {
@@ -177,10 +146,10 @@ class PhotoRepository(
         }
     }
 
-    suspend fun getUnreviewedPhotos(): List<Uri> = withContext(Dispatchers.IO) {
+    suspend fun getUnreviewedPhotos(): List<MediaItem> = withContext(Dispatchers.IO) {
         val allPhotos = loadAllPhotos()
         val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
-        allPhotos.filter { it.toString() !in reviewedUris }
+        allPhotos.filter { it.uri.toString() !in reviewedUris }
     }
 
     suspend fun getReviewedUris(): Set<String> = withContext(Dispatchers.IO) {
@@ -222,9 +191,10 @@ class PhotoRepository(
     }
 
     suspend fun getPhotoAlbumInfo(uri: Uri): FolderInfo? = withContext(Dispatchers.IO) {
+        // BUCKET_ID and BUCKET_DISPLAY_NAME are the same column name for both images and videos
         val projection = arrayOf(
-            MediaStore.Images.Media.BUCKET_ID,
-            MediaStore.Images.Media.BUCKET_DISPLAY_NAME
+            MediaStore.MediaColumns.BUCKET_ID,
+            MediaStore.MediaColumns.BUCKET_DISPLAY_NAME
         )
 
         context.contentResolver.query(
@@ -235,8 +205,8 @@ class PhotoRepository(
             null
         )?.use { cursor ->
             if (cursor.moveToFirst()) {
-                val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
-                val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+                val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_ID)
+                val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
                 val bucketId = cursor.getLong(bucketIdColumn)
                 val bucketName = cursor.getString(bucketNameColumn) ?: "Unknown"
                 FolderInfo(
@@ -267,7 +237,7 @@ class PhotoRepository(
                 if (Environment.isExternalStorageManager()) {
                     // We have full access - move directly without permission dialog
                     val values = ContentValues().apply {
-                        put(MediaStore.Images.Media.RELATIVE_PATH, targetRelativePath)
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, targetRelativePath)
                     }
                     val rowsUpdated = context.contentResolver.update(photoUri, values, null, null)
                     return@withContext if (rowsUpdated > 0) {
@@ -286,7 +256,7 @@ class PhotoRepository(
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 // Android 10: Update RELATIVE_PATH directly
                 val values = ContentValues().apply {
-                    put(MediaStore.Images.Media.RELATIVE_PATH, targetRelativePath)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, targetRelativePath)
                 }
                 val rowsUpdated = context.contentResolver.update(photoUri, values, null, null)
                 if (rowsUpdated > 0) {
@@ -309,7 +279,7 @@ class PhotoRepository(
                 ?: return@withContext MoveResult.Error("Could not find target album path")
 
             val values = ContentValues().apply {
-                put(MediaStore.Images.Media.RELATIVE_PATH, targetRelativePath)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, targetRelativePath)
             }
             val rowsUpdated = context.contentResolver.update(photoUri, values, null, null)
             if (rowsUpdated > 0) {
@@ -323,11 +293,10 @@ class PhotoRepository(
     }
 
     private fun getAlbumRelativePath(albumName: String): String? {
-        // Query MediaStore to find an existing photo in the target album to get its relative path
-        val projection = arrayOf(
-            MediaStore.Images.Media.RELATIVE_PATH
-        )
-        val selection = "${MediaStore.Images.Media.BUCKET_DISPLAY_NAME} = ?"
+        // Query MediaStore to find an existing item in the target album to get its relative path
+        // Try images first, then videos
+        val projection = arrayOf(MediaStore.MediaColumns.RELATIVE_PATH)
+        val selection = "${MediaStore.MediaColumns.BUCKET_DISPLAY_NAME} = ?"
         val selectionArgs = arrayOf(albumName)
 
         context.contentResolver.query(
@@ -338,14 +307,32 @@ class PhotoRepository(
             null
         )?.use { cursor ->
             if (cursor.moveToFirst()) {
-                val pathColumn = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
+                val pathColumn = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
                 if (pathColumn >= 0) {
                     return cursor.getString(pathColumn)
                 }
             }
         }
 
-        // If no existing photos in album, construct path based on common patterns
+        // Also check videos if unlocked (album might only contain videos)
+        if (includeVideos) {
+            context.contentResolver.query(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                selection,
+                selectionArgs,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val pathColumn = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+                    if (pathColumn >= 0) {
+                        return cursor.getString(pathColumn)
+                    }
+                }
+            }
+        }
+
+        // If no existing items in album, construct path based on common patterns
         return when {
             albumName.equals("Camera", ignoreCase = true) -> "${Environment.DIRECTORY_DCIM}/Camera"
             albumName.equals("Screenshots", ignoreCase = true) -> "${Environment.DIRECTORY_PICTURES}/Screenshots"
@@ -356,12 +343,12 @@ class PhotoRepository(
 
     private fun movePhotoLegacy(photoUri: Uri, targetAlbumName: String): MoveResult {
         // Get the source file path
-        val projection = arrayOf(MediaStore.Images.Media.DATA)
+        val projection = arrayOf(MediaStore.MediaColumns.DATA)
         var sourcePath: String? = null
 
         context.contentResolver.query(photoUri, projection, null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
-                val dataColumn = cursor.getColumnIndex(MediaStore.Images.Media.DATA)
+                val dataColumn = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
                 if (dataColumn >= 0) {
                     sourcePath = cursor.getString(dataColumn)
                 }
@@ -400,16 +387,18 @@ class PhotoRepository(
             // Delete old entry from MediaStore
             context.contentResolver.delete(photoUri, null, null)
 
-            // Scan new file to add to MediaStore
+            // Scan new file to add to MediaStore — detect MIME type from the URI
+            val mimeType = context.contentResolver.getType(photoUri) ?: "image/jpeg"
+            val isVideo = mimeType.startsWith("video/")
+            val storeUri = if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                           else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+
             val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DATA, targetFile.absolutePath)
-                put(MediaStore.Images.Media.DISPLAY_NAME, targetFile.name)
-                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                put(MediaStore.MediaColumns.DATA, targetFile.absolutePath)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, targetFile.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
             }
-            val newUri = context.contentResolver.insert(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                values
-            )
+            val newUri = context.contentResolver.insert(storeUri, values)
 
             if (newUri != null) {
                 MoveResult.Success(newUri)
@@ -424,37 +413,106 @@ class PhotoRepository(
     // ==================== Menu Screen Methods ====================
 
     /**
-     * Get photos grouped by month with review counts.
-     * Only returns months that have unreviewed photos.
+     * Helper: collect URIs from a content URI, grouped by bucket.
      */
-    suspend fun getPhotosByMonth(): List<MonthGroup> = withContext(Dispatchers.IO) {
-        val monthCounts = mutableMapOf<Pair<Int, Int>, MutableList<String>>()  // (year, month) -> list of URIs
+    private fun collectFolderCounts(
+        contentUri: Uri,
+        folders: MutableMap<Long, Pair<String, Int>>
+    ) {
         val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.DATE_ADDED
+            MediaStore.MediaColumns.BUCKET_ID,
+            MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
+            MediaStore.MediaColumns.RELATIVE_PATH
         )
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
         context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            contentUri,
+            projection,
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_ID)
+            val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
+            val relativePathColumn = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+
+            while (cursor.moveToNext()) {
+                val bucketId = cursor.getLong(bucketIdColumn)
+                var bucketName = cursor.getString(bucketNameColumn)
+
+                // If bucket name is null, empty, or looks like a bucket ID (all digits),
+                // try to extract folder name from relative path
+                if (bucketName.isNullOrBlank() || bucketName.all { it.isDigit() }) {
+                    if (relativePathColumn >= 0) {
+                        val relativePath = cursor.getString(relativePathColumn)
+                        bucketName = relativePath
+                            ?.trimEnd('/')
+                            ?.substringAfterLast('/')
+                            ?.takeIf { it.isNotBlank() && !it.all { c -> c.isDigit() } }
+                    }
+                }
+
+                // Skip folders that still have invalid names (numeric-only or blank)
+                if (bucketName.isNullOrBlank() || bucketName.all { it.isDigit() }) {
+                    continue
+                }
+
+                val existing = folders[bucketId]
+                if (existing != null) {
+                    folders[bucketId] = existing.first to (existing.second + 1)
+                } else {
+                    folders[bucketId] = bucketName to 1
+                }
+            }
+        }
+    }
+
+    suspend fun getAvailableFolders(): List<FolderInfo> = withContext(Dispatchers.IO) {
+        val folders = mutableMapOf<Long, Pair<String, Int>>()
+
+        collectFolderCounts(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, folders)
+        if (includeVideos) {
+            collectFolderCounts(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, folders)
+        }
+
+        folders.map { (id, pair) ->
+            FolderInfo(
+                bucketId = id,
+                displayName = pair.first,
+                photoCount = pair.second
+            )
+        }.sortedBy { it.displayName.lowercase() }  // Alphabetical for stable order
+    }
+
+    /**
+     * Helper: collect URIs grouped by month from a content URI.
+     */
+    private fun collectMonthUris(
+        contentUri: Uri,
+        monthCounts: MutableMap<Pair<Int, Int>, MutableList<String>>
+    ) {
+        val projection = arrayOf(
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.DATE_ADDED
+        )
+        val sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
+
+        context.contentResolver.query(
+            contentUri,
             projection,
             null,
             null,
             sortOrder
         )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+            val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
             val calendar = Calendar.getInstance()
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
                 val dateAdded = cursor.getLong(dateColumn)
-                val uri = ContentUris.withAppendedId(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    id
-                ).toString()
+                val uri = ContentUris.withAppendedId(contentUri, id).toString()
 
-                // Convert timestamp (seconds) to year/month
                 calendar.timeInMillis = dateAdded * 1000
                 val year = calendar.get(Calendar.YEAR)
                 val month = calendar.get(Calendar.MONTH)
@@ -462,6 +520,19 @@ class PhotoRepository(
                 val key = year to month
                 monthCounts.getOrPut(key) { mutableListOf() }.add(uri)
             }
+        }
+    }
+
+    /**
+     * Get photos grouped by month with review counts.
+     * Only returns months that have unreviewed photos.
+     */
+    suspend fun getPhotosByMonth(): List<MonthGroup> = withContext(Dispatchers.IO) {
+        val monthCounts = mutableMapOf<Pair<Int, Int>, MutableList<String>>()
+
+        collectMonthUris(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, monthCounts)
+        if (includeVideos) {
+            collectMonthUris(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, monthCounts)
         }
 
         val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
@@ -492,37 +563,36 @@ class PhotoRepository(
     }
 
     /**
-     * Get photos grouped by album with review counts.
-     * Only returns albums that have unreviewed photos.
+     * Helper: collect URIs grouped by album from a content URI.
      */
-    suspend fun getPhotosByAlbum(): List<AlbumGroup> = withContext(Dispatchers.IO) {
-        val albumCounts = mutableMapOf<Long, Pair<String, MutableList<String>>>()  // bucketId -> (name, list of URIs)
+    private fun collectAlbumUris(
+        contentUri: Uri,
+        albumCounts: MutableMap<Long, Pair<String, MutableList<String>>>
+    ) {
         val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.BUCKET_ID,
-            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
-            MediaStore.Images.Media.RELATIVE_PATH
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.BUCKET_ID,
+            MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
+            MediaStore.MediaColumns.RELATIVE_PATH
         )
 
         context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            contentUri,
             projection,
             null,
             null,
             null
         )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
-            val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
-            val relativePathColumn = cursor.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+            val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_ID)
+            val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
+            val relativePathColumn = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
 
             while (cursor.moveToNext()) {
                 val photoId = cursor.getLong(idColumn)
                 val bucketId = cursor.getLong(bucketIdColumn)
                 var bucketName = cursor.getString(bucketNameColumn)
 
-                // If bucket name is null, empty, or looks like a bucket ID (all digits),
-                // try to extract folder name from relative path
                 if (bucketName.isNullOrBlank() || bucketName.all { it.isDigit() }) {
                     if (relativePathColumn >= 0) {
                         val relativePath = cursor.getString(relativePathColumn)
@@ -533,15 +603,11 @@ class PhotoRepository(
                     }
                 }
 
-                // Skip photos with invalid album names
                 if (bucketName.isNullOrBlank() || bucketName.all { it.isDigit() }) {
                     continue
                 }
 
-                val uri = ContentUris.withAppendedId(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    photoId
-                ).toString()
+                val uri = ContentUris.withAppendedId(contentUri, photoId).toString()
 
                 val existing = albumCounts[bucketId]
                 if (existing != null) {
@@ -550,6 +616,19 @@ class PhotoRepository(
                     albumCounts[bucketId] = bucketName to mutableListOf(uri)
                 }
             }
+        }
+    }
+
+    /**
+     * Get photos grouped by album with review counts.
+     * Only returns albums that have unreviewed photos.
+     */
+    suspend fun getPhotosByAlbum(): List<AlbumGroup> = withContext(Dispatchers.IO) {
+        val albumCounts = mutableMapOf<Long, Pair<String, MutableList<String>>>()
+
+        collectAlbumUris(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, albumCounts)
+        if (includeVideos) {
+            collectAlbumUris(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, albumCounts)
         }
 
         val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
@@ -580,8 +659,9 @@ class PhotoRepository(
      */
     suspend fun getAllMediaStats(): AllMediaStats? = withContext(Dispatchers.IO) {
         val uris = mutableListOf<String>()
-        val projection = arrayOf(MediaStore.Images.Media._ID)
+        val projection = arrayOf(MediaStore.MediaColumns._ID)
 
+        // Images
         context.contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             projection,
@@ -589,7 +669,7 @@ class PhotoRepository(
             null,
             null
         )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
                 val uri = ContentUris.withAppendedId(
@@ -597,6 +677,27 @@ class PhotoRepository(
                     id
                 ).toString()
                 uris.add(uri)
+            }
+        }
+
+        // Videos (if unlocked)
+        if (includeVideos) {
+            context.contentResolver.query(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idColumn)
+                    val uri = ContentUris.withAppendedId(
+                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                        id
+                    ).toString()
+                    uris.add(uri)
+                }
             }
         }
 
@@ -620,110 +721,78 @@ class PhotoRepository(
     /**
      * Load photos for a specific month (unreviewed only).
      */
-    suspend fun loadPhotosByMonth(year: Int, month: Int): List<Uri> = withContext(Dispatchers.IO) {
-        val photos = mutableListOf<Uri>()
-        val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.DATE_ADDED
-        )
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+    suspend fun loadPhotosByMonth(year: Int, month: Int): List<MediaItem> = withContext(Dispatchers.IO) {
+        val items = mutableListOf<Pair<Long, MediaItem>>()
 
-        context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            null,
-            null,
-            sortOrder
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-            val calendar = Calendar.getInstance()
+        fun collectFromStore(contentUri: Uri, isVideo: Boolean) {
+            val baseProjection = mutableListOf(
+                MediaStore.MediaColumns._ID,
+                MediaStore.MediaColumns.DATE_ADDED
+            )
+            if (isVideo) baseProjection.add(MediaStore.Video.Media.DURATION)
 
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idColumn)
-                val dateAdded = cursor.getLong(dateColumn)
+            context.contentResolver.query(
+                contentUri,
+                baseProjection.toTypedArray(),
+                null,
+                null,
+                "${MediaStore.MediaColumns.DATE_ADDED} DESC"
+            )?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+                val durationColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.DURATION) else -1
+                val calendar = Calendar.getInstance()
 
-                // Convert timestamp (seconds) to year/month
-                calendar.timeInMillis = dateAdded * 1000
-                val photoYear = calendar.get(Calendar.YEAR)
-                val photoMonth = calendar.get(Calendar.MONTH)
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idColumn)
+                    val dateAdded = cursor.getLong(dateColumn)
 
-                if (photoYear == year && photoMonth == month) {
-                    val uri = ContentUris.withAppendedId(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        id
-                    )
-                    photos.add(uri)
+                    calendar.timeInMillis = dateAdded * 1000
+                    val photoYear = calendar.get(Calendar.YEAR)
+                    val photoMonth = calendar.get(Calendar.MONTH)
+
+                    if (photoYear == year && photoMonth == month) {
+                        val duration = if (durationColumn >= 0) cursor.getLong(durationColumn) else 0L
+                        val uri = ContentUris.withAppendedId(contentUri, id)
+                        items.add(dateAdded to MediaItem(uri, isVideo, duration))
+                    }
                 }
             }
         }
 
-        // Filter out reviewed photos
+        collectFromStore(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
+        if (includeVideos) {
+            collectFromStore(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
+        }
+
+        // Sort by date, filter reviewed
         val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
-        photos.filter { it.toString() !in reviewedUris }
+        items.sortedByDescending { it.first }
+            .map { it.second }
+            .filter { it.uri.toString() !in reviewedUris }
     }
 
     /**
      * Load photos for a specific album (unreviewed only).
      */
-    suspend fun loadPhotosByAlbumId(bucketId: Long): List<Uri> = withContext(Dispatchers.IO) {
-        val photos = mutableListOf<Uri>()
-        val projection = arrayOf(MediaStore.Images.Media._ID)
-        val selection = "${MediaStore.Images.Media.BUCKET_ID} = ?"
+    suspend fun loadPhotosByAlbumId(bucketId: Long): List<MediaItem> = withContext(Dispatchers.IO) {
+        val selection = "${MediaStore.MediaColumns.BUCKET_ID} = ?"
         val selectionArgs = arrayOf(bucketId.toString())
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        val allItems = queryMediaItems(selection, selectionArgs)
 
-        context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            sortOrder
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idColumn)
-                val uri = ContentUris.withAppendedId(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    id
-                )
-                photos.add(uri)
-            }
-        }
-
-        // Filter out reviewed photos
+        // Filter out reviewed
         val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
-        photos.filter { it.toString() !in reviewedUris }
+        allItems.filter { it.uri.toString() !in reviewedUris }
     }
 
     /**
      * Load all media (unreviewed only).
      */
-    suspend fun loadAllMedia(): List<Uri> = withContext(Dispatchers.IO) {
-        val photos = mutableListOf<Uri>()
-        val projection = arrayOf(MediaStore.Images.Media._ID)
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+    suspend fun loadAllMedia(): List<MediaItem> = withContext(Dispatchers.IO) {
+        val allItems = queryMediaItems()
 
-        context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            null,
-            null,
-            sortOrder
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idColumn)
-                val uri = ContentUris.withAppendedId(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    id
-                )
-                photos.add(uri)
-            }
-        }
-
-        // Filter out reviewed photos
+        // Filter out reviewed
         val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
-        photos.filter { it.toString() !in reviewedUris }
+        allItems.filter { it.uri.toString() !in reviewedUris }
     }
 }

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,10 +14,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -27,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +49,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.photocleanup.data.MediaItem
 import com.example.photocleanup.ui.theme.ActionDelete
 import com.example.photocleanup.ui.theme.ActionKeep
 import kotlinx.coroutines.launch
@@ -53,7 +58,7 @@ import kotlin.math.roundToInt
 
 @Composable
 fun SwipeablePhotoCard(
-    photo: Uri,
+    mediaItem: MediaItem,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit,
     entryDirection: Int = 0, // -1 = from left (undo delete), 1 = from right (undo keep)
@@ -94,6 +99,9 @@ fun SwipeablePhotoCard(
             entryOffset.animateTo(0f, tween(250))
         }
     }
+
+    // Video playback state
+    var isPlaying by remember { mutableStateOf(false) }
 
     // Trigger animations when dismiss state changes
     LaunchedEffect(dismissState) {
@@ -153,7 +161,7 @@ fun SwipeablePhotoCard(
                     scaleY = animatedScale.value
                 }
                 .alpha(animatedAlpha.value)
-                .pointerInput(photo) {
+                .pointerInput(mediaItem.uri) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             if (dismissState == 0) {
@@ -205,15 +213,68 @@ fun SwipeablePhotoCard(
             elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                AsyncImage(
-                    model = photo,
-                    contentDescription = "Photo to review",
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(Color.Black),
-                    contentScale = ContentScale.Fit
-                )
+                if (mediaItem.isVideo && isPlaying) {
+                    // Video player (ExoPlayer)
+                    VideoPlayer(
+                        uri = mediaItem.uri,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color.Black)
+                    )
+                } else {
+                    // Photo or video thumbnail (Coil handles both via VideoFrameDecoder)
+                    AsyncImage(
+                        model = mediaItem.uri,
+                        contentDescription = if (mediaItem.isVideo) "Video to review" else "Photo to review",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color.Black),
+                        contentScale = ContentScale.Fit
+                    )
+
+                    // Video overlay: play button + duration badge
+                    if (mediaItem.isVideo) {
+                        // Play button (centered)
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(72.dp)
+                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                .clickable { isPlaying = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.PlayArrow,
+                                contentDescription = "Play video",
+                                modifier = Modifier.size(48.dp),
+                                tint = Color.White
+                            )
+                        }
+
+                        // Duration badge (bottom-right)
+                        if (mediaItem.durationMs > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(12.dp)
+                                    .background(
+                                        Color.Black.copy(alpha = 0.7f),
+                                        RoundedCornerShape(4.dp)
+                                    )
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = formatDuration(mediaItem.durationMs),
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // Delete overlay (swipe left) - gradient from left
                 if (swipeProgress < -0.1f) {

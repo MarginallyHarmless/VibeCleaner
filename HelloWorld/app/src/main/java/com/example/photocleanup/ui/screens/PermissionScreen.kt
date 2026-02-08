@@ -34,6 +34,7 @@ import com.example.photocleanup.ui.theme.AccentPrimaryDim
 import com.example.photocleanup.ui.theme.DarkBackground
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 
@@ -43,66 +44,107 @@ fun PermissionScreen(
     onPermissionGranted: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_IMAGES
-    } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
-    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        // Android 13+: request both image and video permissions
+        val permissionsState = rememberMultiplePermissionsState(
+            listOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+        )
 
-    val permissionState = rememberPermissionState(permission)
-
-    LaunchedEffect(permissionState.status) {
-        if (permissionState.status.isGranted) {
-            onPermissionGranted()
+        LaunchedEffect(permissionsState.allPermissionsGranted) {
+            if (permissionsState.allPermissionsGranted) {
+                onPermissionGranted()
+            }
         }
-    }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(DarkBackground)
-    ) {
-        Column(
-            modifier = Modifier
+        val shouldShowRationale = permissionsState.shouldShowRationale
+
+        Box(
+            modifier = modifier
                 .fillMaxSize()
-                .padding(32.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .background(DarkBackground)
         ) {
-            Text(
-                text = "\uD83D\uDCF7",
-                fontSize = 72.sp
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(text = "\uD83D\uDCF7", fontSize = 72.sp)
+                Spacer(modifier = Modifier.height(32.dp))
+                Text(
+                    text = "Let's Clean Up!",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = AccentPrimary,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = if (shouldShowRationale) {
+                        "Clean My Photos needs access to your photos and videos to help you review and organize them. Please grant permission to continue."
+                    } else {
+                        "To tidy up your photo and video chaos, we'll need a backstage pass to your library. Don't worry, your camera roll secrets are safe with us!"
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(48.dp))
+                AppButton(
+                    text = "Grant Permission",
+                    onClick = { permissionsState.launchMultiplePermissionRequest() }
+                )
+            }
+        }
+    } else {
+        // Android 12-: single permission (READ_EXTERNAL_STORAGE covers both)
+        val permissionState = rememberPermissionState(Manifest.permission.READ_EXTERNAL_STORAGE)
 
-            Spacer(modifier = Modifier.height(32.dp))
+        LaunchedEffect(permissionState.status) {
+            if (permissionState.status.isGranted) {
+                onPermissionGranted()
+            }
+        }
 
-            Text(
-                text = "Let's Clean Up!",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                color = AccentPrimary,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = if (permissionState.status.shouldShowRationale) {
-                    "Clean My Photos needs access to your photos to help you review and organize them. Please grant permission to continue."
-                } else {
-                    "To tidy up your photo chaos, we'll need a backstage pass to your library. Don't worry, your camera roll secrets are safe with us!"
-                },
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(48.dp))
-
-            AppButton(
-                text = "Grant Permission",
-                onClick = { permissionState.launchPermissionRequest() }
-            )
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(DarkBackground)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(32.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(text = "\uD83D\uDCF7", fontSize = 72.sp)
+                Spacer(modifier = Modifier.height(32.dp))
+                Text(
+                    text = "Let's Clean Up!",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = AccentPrimary,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = if (permissionState.status.shouldShowRationale) {
+                        "Clean My Photos needs access to your photos and videos to help you review and organize them. Please grant permission to continue."
+                    } else {
+                        "To tidy up your photo and video chaos, we'll need a backstage pass to your library. Don't worry, your camera roll secrets are safe with us!"
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(48.dp))
+                AppButton(
+                    text = "Grant Permission",
+                    onClick = { permissionState.launchPermissionRequest() }
+                )
+            }
         }
     }
 }

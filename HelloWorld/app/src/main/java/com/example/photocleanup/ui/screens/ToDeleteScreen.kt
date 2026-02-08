@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material3.CircularProgressIndicator
@@ -89,7 +90,7 @@ fun ToDeleteScreen(
                         text = if (uiState.selectedUris.isNotEmpty()) {
                             "${uiState.selectedUris.size} selected"
                         } else {
-                            "${uiState.photos.size} photos to delete"
+                            "${uiState.photos.size} items to delete"
                         }
                     )
                 },
@@ -223,6 +224,25 @@ private fun PhotoGridItem(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
+
+        // Video play icon overlay
+        if (photo.uri.contains("/video/")) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(4.dp)
+                    .size(24.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Video",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
 
         if (isSelected) {
             Box(

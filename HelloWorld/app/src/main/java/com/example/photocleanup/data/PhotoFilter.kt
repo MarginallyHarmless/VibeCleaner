@@ -3,6 +3,12 @@ package com.example.photocleanup.data
 import android.content.IntentSender
 import android.net.Uri
 
+data class MediaItem(
+    val uri: Uri,
+    val isVideo: Boolean,
+    val durationMs: Long = 0L
+)
+
 data class PhotoFilter(
     val selectedFolders: Set<String> = emptySet(),  // Empty = all folders
     val dateRange: DateRangeFilter = DateRangeFilter.ALL

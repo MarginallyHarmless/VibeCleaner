@@ -82,6 +82,7 @@ import com.example.photocleanup.ui.theme.TextSecondary
 import com.example.photocleanup.viewmodel.PhotoScannerViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.accompanist.permissions.rememberPermissionState
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -117,12 +118,15 @@ fun PhotoScannerScreen(
     val lowQualityCount by viewModel.lowQualityCount.collectAsState()
 
     // Permission check
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_IMAGES
+    val isPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val permissionsState = rememberMultiplePermissionsState(
+            listOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+        )
+        permissionsState.allPermissionsGranted
     } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
+        val permissionState = rememberPermissionState(Manifest.permission.READ_EXTERNAL_STORAGE)
+        permissionState.status.isGranted
     }
-    val permissionState = rememberPermissionState(permission)
 
     // Launcher for delete permission on Android 11+ (duplicates)
     val duplicateDeleteLauncher = rememberLauncherForActivityResult(
@@ -156,7 +160,7 @@ fun PhotoScannerScreen(
     // State for fullscreen photo preview (long-press)
     var fullscreenPhoto by remember { mutableStateOf<FullscreenPhotoInfo?>(null) }
 
-    if (!permissionState.status.isGranted) {
+    if (!isPermissionGranted) {
         PermissionScreen(
             onPermissionGranted = { viewModel.loadDuplicateGroups() }
         )

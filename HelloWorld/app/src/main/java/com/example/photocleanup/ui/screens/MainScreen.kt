@@ -1,7 +1,6 @@
 package com.example.photocleanup.ui.screens
 
 import android.Manifest
-import android.net.Uri
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -58,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import android.net.Uri
 import com.example.photocleanup.data.MenuFilter
 import com.example.photocleanup.ui.components.AlbumSelector
 import com.example.photocleanup.ui.components.AppButton
@@ -73,6 +73,7 @@ import com.example.photocleanup.ui.theme.ActionKeep
 import com.example.photocleanup.viewmodel.PhotoViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.accompanist.permissions.rememberPermissionState
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -91,12 +92,15 @@ fun MainScreen(
     var undoPhotoKey by remember { mutableStateOf<Uri?>(null) }
     var undoEntryDirection by remember { mutableIntStateOf(0) }
 
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_IMAGES
+    val isPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val permissionsState = rememberMultiplePermissionsState(
+            listOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+        )
+        permissionsState.allPermissionsGranted
     } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
+        val permissionState = rememberPermissionState(Manifest.permission.READ_EXTERNAL_STORAGE)
+        permissionState.status.isGranted
     }
-    val permissionState = rememberPermissionState(permission)
 
     val deleteLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
@@ -139,7 +143,7 @@ fun MainScreen(
         }
     }
 
-    if (!permissionState.status.isGranted) {
+    if (!isPermissionGranted) {
         PermissionScreen(
             onPermissionGranted = {
                 if (menuFilter != null) {
@@ -249,7 +253,7 @@ fun MainScreen(
                                             val action = uiState.lastAction
                                             if (action != null) {
                                                 undoEntryDirection = if (action.action == "to_delete") -1 else 1
-                                                undoPhotoKey = action.photo
+                                                undoPhotoKey = action.photo.uri
                                             }
                                             viewModel.undoLastAction()
                                         })
@@ -263,7 +267,7 @@ fun MainScreen(
                                     // to prevent a black flash when current/next cards swap
                                     uiState.nextPhoto?.let { nextPhoto ->
                                         SwipeablePhotoCard(
-                                            photo = nextPhoto,
+                                            mediaItem = nextPhoto,
                                             onSwipeLeft = { },
                                             onSwipeRight = { },
                                             modifier = Modifier
@@ -274,10 +278,10 @@ fun MainScreen(
 
                                     // Current photo on top (zIndex = 1)
                                     uiState.currentPhoto?.let { photo ->
-                                        val direction = if (photo == undoPhotoKey) undoEntryDirection else 0
-                                        key(photo) {
+                                        val direction = if (photo.uri == undoPhotoKey) undoEntryDirection else 0
+                                        key(photo.uri) {
                                             SwipeablePhotoCard(
-                                                photo = photo,
+                                                mediaItem = photo,
                                                 onSwipeLeft = { viewModel.markCurrentPhotoForDeletion() },
                                                 onSwipeRight = { viewModel.keepCurrentPhoto() },
                                                 entryDirection = direction,
