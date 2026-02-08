@@ -40,7 +40,7 @@ interface ReviewedPhotoDao {
 
     // ==================== Stats Queries ====================
 
-    @Query("SELECT COUNT(*) FROM reviewed_photos WHERE action IN ('deleted', 'to_delete')")
+    @Query("SELECT COUNT(*) FROM reviewed_photos WHERE action = 'deleted'")
     suspend fun getDeletedCount(): Int
 
     @Query("SELECT COUNT(*) FROM reviewed_photos WHERE action = 'keep'")
@@ -61,20 +61,20 @@ interface ReviewedPhotoDao {
     @Query("SELECT date(reviewedAt / 1000, 'unixepoch') AS day, COUNT(*) AS count FROM reviewed_photos GROUP BY day ORDER BY day")
     suspend fun getReviewedCountByDay(): List<DayCount>
 
-    @Query("SELECT COALESCE(SUM(fileSize), 0) FROM reviewed_photos WHERE action IN ('deleted', 'to_delete')")
+    @Query("SELECT COALESCE(SUM(fileSize), 0) FROM reviewed_photos WHERE action = 'deleted'")
     suspend fun getDeletedFilesSizeSum(): Long
 
     @Query("""
         SELECT strftime('%Y-%m', reviewedAt / 1000, 'unixepoch') AS month,
                COALESCE(SUM(fileSize), 0) AS bytes
         FROM reviewed_photos
-        WHERE action IN ('deleted', 'to_delete')
+        WHERE action = 'deleted'
         GROUP BY month
         ORDER BY month
     """)
     suspend fun getDeletedFilesSizeByMonth(): List<MonthBytes>
 
-    @Query("SELECT fileSize, reviewedAt AS dateAdded FROM reviewed_photos WHERE action IN ('deleted', 'to_delete') AND fileSize > 0 ORDER BY fileSize DESC LIMIT 1")
+    @Query("SELECT fileSize, reviewedAt AS dateAdded FROM reviewed_photos WHERE action = 'deleted' AND fileSize > 0 ORDER BY fileSize DESC LIMIT 1")
     suspend fun getLargestDeletedFile(): LargestFile?
 }
 

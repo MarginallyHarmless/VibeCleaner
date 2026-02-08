@@ -125,7 +125,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                 val existing = monthMap[row.month] ?: MonthlyStats(row.month, 0, 0)
                 monthMap[row.month] = when (row.action) {
                     "keep" -> existing.copy(kept = existing.kept + row.count)
-                    "deleted", "to_delete" -> existing.copy(deleted = existing.deleted + row.count)
+                    "deleted" -> existing.copy(deleted = existing.deleted + row.count)
                     else -> existing
                 }
             }
