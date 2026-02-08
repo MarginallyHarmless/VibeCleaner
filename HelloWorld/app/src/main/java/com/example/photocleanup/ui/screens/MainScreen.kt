@@ -245,22 +245,22 @@ fun MainScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    if (uiState.toDeleteCount > 0) {
-                                        ToDeleteBadge(
-                                            count = uiState.toDeleteCount,
-                                            onClick = onNavigateToDelete
-                                        )
-                                    }
-                                    if (uiState.lastAction != null) {
-                                        UndoButton(onClick = {
+                                    ToDeleteBadge(
+                                        count = uiState.toDeleteCount,
+                                        onClick = onNavigateToDelete,
+                                        enabled = uiState.toDeleteCount > 0
+                                    )
+                                    UndoButton(
+                                        onClick = {
                                             val action = uiState.lastAction
                                             if (action != null) {
                                                 undoEntryDirection = if (action.action == "to_delete") -1 else 1
                                                 undoPhotoKey = action.photo.uri
                                             }
                                             viewModel.undoLastAction()
-                                        })
-                                    }
+                                        },
+                                        enabled = uiState.lastAction != null
+                                    )
                                     Spacer(modifier = Modifier.weight(1f))
                                 }
 
@@ -344,13 +344,16 @@ fun MainScreen(
 @Composable
 private fun UndoButton(
     onClick: () -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    val contentAlpha = if (enabled) 1f else 0.35f
     Surface(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
-        color = AccentPrimary.copy(alpha = 0.15f)
+        color = AccentPrimary.copy(alpha = if (enabled) 0.15f else 0.07f)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -361,12 +364,12 @@ private fun UndoButton(
                 imageVector = Icons.Filled.Refresh,
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
-                tint = AccentPrimary
+                tint = AccentPrimary.copy(alpha = contentAlpha)
             )
             Text(
                 text = "Undo",
                 style = MaterialTheme.typography.labelLarge,
-                color = AccentPrimary,
+                color = AccentPrimary.copy(alpha = contentAlpha),
                 fontWeight = FontWeight.SemiBold
             )
         }
@@ -377,8 +380,11 @@ private fun UndoButton(
 private fun ToDeleteBadge(
     count: Int,
     onClick: () -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    val contentAlpha = if (enabled) 1f else 0.35f
+
     // Track previous count to detect increments
     var lastCount by remember { mutableIntStateOf(count) }
     var isFlashing by remember { mutableStateOf(false) }
@@ -395,13 +401,14 @@ private fun ToDeleteBadge(
 
     // Animate background alpha
     val backgroundAlpha by animateFloatAsState(
-        targetValue = if (isFlashing) 0.4f else 0.15f,
+        targetValue = if (!enabled) 0.07f else if (isFlashing) 0.4f else 0.15f,
         animationSpec = tween(durationMillis = 150),
         label = "flashAnimation"
     )
 
     Surface(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
         color = ActionDelete.copy(alpha = backgroundAlpha)
@@ -415,12 +422,12 @@ private fun ToDeleteBadge(
                 imageVector = Icons.Default.Delete,
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
-                tint = ActionDelete
+                tint = ActionDelete.copy(alpha = contentAlpha)
             )
             Text(
-                text = count.toString(),
+                text = if (enabled) count.toString() else "0",
                 style = MaterialTheme.typography.labelLarge,
-                color = ActionDelete,
+                color = ActionDelete.copy(alpha = contentAlpha),
                 fontWeight = FontWeight.SemiBold
             )
         }
