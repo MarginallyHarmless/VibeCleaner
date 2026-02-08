@@ -125,52 +125,72 @@ fun StatsScreen(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
-        // Reviewed vs Total ratio bar
-        if (uiState.totalPhotosOnDevice > 0) {
-            item {
-                ReviewedRatioBar(
-                    reviewed = uiState.totalReviewed,
-                    total = uiState.totalPhotosOnDevice
+        // Activity Grid: Deleted / Kept (free)
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatGridCard(
+                    icon = Icons.Rounded.Delete,
+                    value = formatNumber(uiState.totalDeleted),
+                    label = "Deleted",
+                    modifier = Modifier.weight(1f)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                StatGridCard(
+                    icon = Icons.Rounded.Star,
+                    value = formatNumber(uiState.totalKept),
+                    label = "Kept",
+                    modifier = Modifier.weight(1f)
+                )
             }
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // Activity Grid (2x2)
+        // Activity Grid: Avg per Session / Busiest Day (locked)
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    StatGridCard(
-                        icon = Icons.Rounded.Delete,
-                        value = formatNumber(uiState.totalDeleted),
-                        label = "Deleted",
-                        modifier = Modifier.weight(1f)
-                    )
-                    StatGridCard(
-                        icon = Icons.Rounded.Star,
-                        value = formatNumber(uiState.totalKept),
-                        label = "Kept",
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+            PremiumOverlay(
+                isLocked = !viewModel.isPremium,
+                onLockedClick = { showUpsellSheet = true }
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     StatGridCard(
                         icon = Icons.Rounded.Speed,
-                        value = "~${uiState.avgPerSession}",
+                        value = if (viewModel.isPremium) "~${uiState.avgPerSession}" else "~42",
                         label = "Avg per Session",
                         modifier = Modifier.weight(1f)
                     )
                     StatGridCard(
                         icon = Icons.Rounded.OfflineBolt,
-                        value = if (uiState.busiestDayCount > 0) formatNumber(uiState.busiestDayCount) else "-",
-                        label = if (uiState.busiestDay.isNotEmpty()) "Best Day" else "Busiest Day",
+                        value = if (viewModel.isPremium) {
+                            if (uiState.busiestDayCount > 0) formatNumber(uiState.busiestDayCount) else "-"
+                        } else "128",
+                        label = if (viewModel.isPremium && uiState.busiestDay.isNotEmpty()) "Best Day" else "Busiest Day",
                         modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // Reviewed vs Total ratio bar (locked)
+        item {
+            PremiumOverlay(
+                isLocked = !viewModel.isPremium,
+                onLockedClick = { showUpsellSheet = true }
+            ) {
+                if (viewModel.isPremium && uiState.totalPhotosOnDevice > 0) {
+                    ReviewedRatioBar(
+                        reviewed = uiState.totalReviewed,
+                        total = uiState.totalPhotosOnDevice
+                    )
+                } else if (!viewModel.isPremium) {
+                    ReviewedRatioBar(
+                        reviewed = 1240,
+                        total = 2700
                     )
                 }
             }

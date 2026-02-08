@@ -79,7 +79,7 @@ fun HeroStatPod(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(DarkSurface)
+            .background(DarkSurfaceVariant)
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

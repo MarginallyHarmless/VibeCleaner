@@ -16,9 +16,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -29,6 +36,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,6 +79,7 @@ fun SettingsTabScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(horizontal = 16.dp)
     ) {
@@ -103,12 +113,14 @@ fun SettingsTabScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = "\uD83D\uDD04",
-                        fontSize = 24.sp
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp)
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = " Reset Reviews",
+                        text = "Reset Reviews",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -172,7 +184,7 @@ fun SettingsTabScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
                         text = stringResource(R.string.premium_settings_upgrade_subtitle),
@@ -180,6 +192,17 @@ fun SettingsTabScreen(
                         textAlign = TextAlign.Center,
                         color = TextSecondary
                     )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Feature list
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        SettingsFeatureRow(Icons.Filled.Movie, stringResource(R.string.premium_feature_video_title), stringResource(R.string.premium_feature_video_desc))
+                        SettingsFeatureRow(Icons.Filled.Shuffle, stringResource(R.string.premium_feature_shuffle_title), stringResource(R.string.premium_feature_shuffle_desc))
+                        SettingsFeatureRow(Icons.Filled.FolderOpen, stringResource(R.string.premium_feature_albums_title), stringResource(R.string.premium_feature_albums_desc))
+                        SettingsFeatureRow(Icons.Filled.DocumentScanner, stringResource(R.string.premium_feature_scanner_title), stringResource(R.string.premium_feature_scanner_desc))
+                        SettingsFeatureRow(Icons.Filled.BarChart, stringResource(R.string.premium_feature_stats_title), stringResource(R.string.premium_feature_stats_desc))
+                    }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -197,6 +220,14 @@ fun SettingsTabScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = stringResource(R.string.premium_one_time),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
                 }
             }
         } else {
@@ -286,7 +317,7 @@ fun SettingsTabScreen(
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(24.dp))
 
         // App version at bottom
         Box(
@@ -336,5 +367,40 @@ fun SettingsTabScreen(
             onUnlockClick = { showUpsellSheet = false },
             onRestoreClick = { showUpsellSheet = false }
         )
+    }
+}
+
+@Composable
+private fun SettingsFeatureRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    description: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = HoneyBronze,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+        }
     }
 }
