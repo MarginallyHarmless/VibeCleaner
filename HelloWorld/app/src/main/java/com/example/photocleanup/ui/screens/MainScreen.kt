@@ -299,7 +299,8 @@ fun MainScreen(
                                 // Full storage access prompt (Android 11+)
                                 // Only show if not already granted and user hasn't dismissed
                                 var promptDismissed by rememberSaveable { mutableStateOf(false) }
-                                val needsStorageAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                                val needsStorageAccess = viewModel.isPremium &&
+                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
                                     !hasFullStorageAccess()
 
                                 if (needsStorageAccess && !promptDismissed) {
