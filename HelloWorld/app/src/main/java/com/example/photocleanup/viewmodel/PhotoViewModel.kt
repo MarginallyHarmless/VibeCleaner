@@ -13,7 +13,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.photocleanup.PhotoCleanupApp
 import com.example.photocleanup.data.DateRangeFilter
-import com.example.photocleanup.data.FavouriteResult
 import com.example.photocleanup.data.FolderInfo
 import com.example.photocleanup.data.MenuFilter
 import com.example.photocleanup.data.MoveResult
@@ -53,9 +52,6 @@ data class PhotoUiState(
     val moveError: String? = null,
     // Menu filter state
     val menuFilter: MenuFilter? = null,
-    // Favourite state
-    val isCurrentPhotoFavourite: Boolean = false,
-    val favouriteIntentSender: IntentSender? = null
 ) {
     val currentPhoto: Uri? get() = photos.getOrNull(currentIndex)
     val nextPhoto: Uri? get() = photos.getOrNull(currentIndex + 1)
@@ -324,43 +320,6 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val albumInfo = repository.getPhotoAlbumInfo(currentPhoto)
             _uiState.value = _uiState.value.copy(currentPhotoAlbum = albumInfo)
-        }
-    }
-
-    fun loadFavouriteStatus() {
-        val currentPhoto = _uiState.value.currentPhoto ?: return
-        viewModelScope.launch {
-            val isFav = repository.isPhotoFavourite(currentPhoto)
-            _uiState.value = _uiState.value.copy(isCurrentPhotoFavourite = isFav)
-        }
-    }
-
-    fun toggleFavourite() {
-        val currentPhoto = _uiState.value.currentPhoto ?: return
-        val newValue = !_uiState.value.isCurrentPhotoFavourite
-        viewModelScope.launch {
-            when (val result = repository.setPhotoFavourite(currentPhoto, newValue)) {
-                is FavouriteResult.Success -> {
-                    _uiState.value = _uiState.value.copy(isCurrentPhotoFavourite = newValue)
-                }
-                is FavouriteResult.RequiresPermission -> {
-                    _uiState.value = _uiState.value.copy(favouriteIntentSender = result.intentSender)
-                }
-                is FavouriteResult.Unsupported -> { }
-            }
-        }
-    }
-
-    fun onFavouritePermissionResult(granted: Boolean) {
-        _uiState.value = _uiState.value.copy(favouriteIntentSender = null)
-        if (granted) {
-            // Permission granted — retry the favourite toggle
-            val currentPhoto = _uiState.value.currentPhoto ?: return
-            val newValue = !_uiState.value.isCurrentPhotoFavourite
-            viewModelScope.launch {
-                repository.completeFavouriteAfterPermission(currentPhoto, newValue)
-                _uiState.value = _uiState.value.copy(isCurrentPhotoFavourite = newValue)
-            }
         }
     }
 

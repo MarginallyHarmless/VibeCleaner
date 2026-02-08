@@ -26,8 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -126,19 +124,6 @@ fun MainScreen(
         }
     }
 
-    // Launcher for favourite write permission (Android 11+)
-    val favouriteLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        viewModel.onFavouritePermissionResult(result.resultCode == android.app.Activity.RESULT_OK)
-    }
-
-    LaunchedEffect(uiState.favouriteIntentSender) {
-        uiState.favouriteIntentSender?.let { intentSender ->
-            favouriteLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
-        }
-    }
-
     // Show move error as toast
     LaunchedEffect(uiState.moveError) {
         uiState.moveError?.let { error ->
@@ -147,11 +132,10 @@ fun MainScreen(
         }
     }
 
-    // Load current photo album and favourite status when photo changes
+    // Load current photo album when photo changes
     LaunchedEffect(uiState.currentPhoto) {
         if (uiState.currentPhoto != null) {
             viewModel.loadCurrentPhotoAlbum()
-            viewModel.loadFavouriteStatus()
         }
     }
 
@@ -271,25 +255,21 @@ fun MainScreen(
                                         })
                                     }
                                     Spacer(modifier = Modifier.weight(1f))
-                                    FavouriteButton(
-                                        isFavourite = uiState.isCurrentPhotoFavourite,
-                                        onClick = { viewModel.toggleFavourite() }
-                                    )
                                 }
 
                                 Box(modifier = Modifier.weight(1f)) {
                                     // Next photo underneath (zIndex = 0)
+                                    // No key() — keeps the composable alive during transitions
+                                    // to prevent a black flash when current/next cards swap
                                     uiState.nextPhoto?.let { nextPhoto ->
-                                        key(nextPhoto) {
-                                            SwipeablePhotoCard(
-                                                photo = nextPhoto,
-                                                onSwipeLeft = { },
-                                                onSwipeRight = { },
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .zIndex(0f)
-                                            )
-                                        }
+                                        SwipeablePhotoCard(
+                                            photo = nextPhoto,
+                                            onSwipeLeft = { },
+                                            onSwipeRight = { },
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .zIndex(0f)
+                                        )
                                     }
 
                                     // Current photo on top (zIndex = 1)
@@ -366,40 +346,6 @@ private fun UndoButton(
                 text = "Undo",
                 style = MaterialTheme.typography.labelLarge,
                 color = AccentPrimary,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
-}
-
-@Composable
-private fun FavouriteButton(
-    isFavourite: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val color = if (isFavourite) ActionKeep else Color.White.copy(alpha = 0.5f)
-    Surface(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        color = if (isFavourite) ActionKeep.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.08f)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Icon(
-                imageVector = if (isFavourite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                contentDescription = if (isFavourite) "Favourited" else "Add to favourites",
-                modifier = Modifier.size(18.dp),
-                tint = color
-            )
-            Text(
-                text = if (isFavourite) "Favourited" else "Favourite",
-                style = MaterialTheme.typography.labelLarge,
-                color = color,
                 fontWeight = FontWeight.SemiBold
             )
         }

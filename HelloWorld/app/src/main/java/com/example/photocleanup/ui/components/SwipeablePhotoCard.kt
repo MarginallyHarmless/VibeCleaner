@@ -104,16 +104,16 @@ fun SwipeablePhotoCard(
             launch { animatedOffsetX.animateTo(pushTargetX, tween(30)) }
             kotlinx.coroutines.delay(30)
 
-            // Phase 2: Fly to badge and shrink (100ms)
+            // Phase 2: Fly to badge, shrink, and fade out (100ms)
             launch { animatedOffsetX.animateTo(deleteTargetX, tween(100, easing = FastOutLinearInEasing)) }
             launch { animatedOffsetY.animateTo(deleteTargetY, tween(100, easing = FastOutLinearInEasing)) }
             launch { animatedScale.animateTo(0.1f, tween(100, easing = FastOutLinearInEasing)) }
+            launch { animatedAlpha.animateTo(0f, tween(100, easing = FastOutLinearInEasing)) }
 
-            // Wait for fly-to-badge animation to complete
+            // Wait for animation to complete
             kotlinx.coroutines.delay(100)
 
-            // Trigger callback - DO NOT reset state after this
-            // The card will be destroyed by Compose due to key(photo) change in MainScreen
+            // Trigger callback — card is invisible, safe to destroy
             onSwipeLeft()
         } else if (dismissState == 1) {
             // Keep animation - fly off right, fade out
