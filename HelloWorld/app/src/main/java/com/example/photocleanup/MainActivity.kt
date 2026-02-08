@@ -140,10 +140,12 @@ class MainActivity : ComponentActivity() {
                                         val monthParam = filter.month ?: -1
                                         val albumIdParam = filter.albumBucketId ?: -1L
                                         val allMediaParam = filter.isAllMedia
+                                        val randomParam = filter.isRandom
+                                        val randomStartUriParam = Uri.encode(filter.randomStartUri ?: "")
                                         val titleParam = Uri.encode(filter.displayTitle)
 
                                         navController.navigate(
-                                            "main?mode=$modeParam&year=$yearParam&month=$monthParam&albumId=$albumIdParam&allMedia=$allMediaParam&title=$titleParam"
+                                            "main?mode=$modeParam&year=$yearParam&month=$monthParam&albumId=$albumIdParam&allMedia=$allMediaParam&random=$randomParam&randomStartUri=$randomStartUriParam&title=$titleParam"
                                         )
                                     }
                                 )
@@ -178,7 +180,7 @@ class MainActivity : ComponentActivity() {
 
                             // Main swipe screen with optional filter parameters
                             composable(
-                                route = "main?mode={mode}&year={year}&month={month}&albumId={albumId}&allMedia={allMedia}&title={title}",
+                                route = "main?mode={mode}&year={year}&month={month}&albumId={albumId}&allMedia={allMedia}&random={random}&randomStartUri={randomStartUri}&title={title}",
                                 arguments = listOf(
                                     navArgument("mode") {
                                         type = NavType.StringType
@@ -200,6 +202,14 @@ class MainActivity : ComponentActivity() {
                                         type = NavType.BoolType
                                         defaultValue = false
                                     },
+                                    navArgument("random") {
+                                        type = NavType.BoolType
+                                        defaultValue = false
+                                    },
+                                    navArgument("randomStartUri") {
+                                        type = NavType.StringType
+                                        defaultValue = ""
+                                    },
                                     navArgument("title") {
                                         type = NavType.StringType
                                         defaultValue = ""
@@ -211,6 +221,8 @@ class MainActivity : ComponentActivity() {
                                 val month = backStackEntry.arguments?.getInt("month") ?: -1
                                 val albumId = backStackEntry.arguments?.getLong("albumId") ?: -1L
                                 val allMedia = backStackEntry.arguments?.getBoolean("allMedia") ?: false
+                                val random = backStackEntry.arguments?.getBoolean("random") ?: false
+                                val randomStartUri = backStackEntry.arguments?.getString("randomStartUri") ?: ""
                                 val title = backStackEntry.arguments?.getString("title") ?: ""
 
                                 // Build MenuFilter from URL parameters
@@ -221,6 +233,8 @@ class MainActivity : ComponentActivity() {
                                         month = if (month >= 0) month else null,
                                         albumBucketId = if (albumId >= 0) albumId else null,
                                         isAllMedia = allMedia,
+                                        isRandom = random,
+                                        randomStartUri = randomStartUri.ifEmpty { null },
                                         displayTitle = title
                                     )
                                 } else null

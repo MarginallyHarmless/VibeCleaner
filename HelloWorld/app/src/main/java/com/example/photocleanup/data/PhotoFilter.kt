@@ -74,5 +74,7 @@ data class MenuFilter(
     val month: Int? = null,
     val albumBucketId: Long? = null,
     val isAllMedia: Boolean = false,
+    val isRandom: Boolean = false,
+    val randomStartUri: String? = null,  // URI of the thumbnail shown on the Random card, so it appears first
     val displayTitle: String = ""  // For showing in the header (e.g., "January 2024" or "Camera")
 )

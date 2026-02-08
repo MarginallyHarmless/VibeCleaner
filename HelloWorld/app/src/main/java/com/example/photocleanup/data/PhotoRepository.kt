@@ -795,4 +795,37 @@ class PhotoRepository(
         val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
         allItems.filter { it.uri.toString() !in reviewedUris }
     }
+
+    /**
+     * Get the URI of the most recently added media item (for hero card thumbnail).
+     */
+    suspend fun getMostRecentMediaUri(): Uri? = withContext(Dispatchers.IO) {
+        val items = querySingleStore(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            isVideo = false,
+            sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
+        )
+        val result = items.firstOrNull()?.second?.uri
+        if (result != null) return@withContext result
+
+        // Fall back to video if no images
+        if (includeVideos) {
+            val videoItems = querySingleStore(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                isVideo = true,
+                sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
+            )
+            videoItems.firstOrNull()?.second?.uri
+        } else null
+    }
+
+    /**
+     * Get a random unreviewed media URI (for Random hero card thumbnail).
+     */
+    suspend fun getRandomThumbnailUri(): Uri? = withContext(Dispatchers.IO) {
+        val allItems = queryMediaItems()
+        val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
+        val unreviewed = allItems.filter { it.uri.toString() !in reviewedUris }
+        unreviewed.randomOrNull()?.uri
+    }
 }

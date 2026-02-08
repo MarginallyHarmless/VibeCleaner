@@ -40,11 +40,15 @@ import androidx.compose.ui.unit.sp
 import com.example.photocleanup.R
 import com.example.photocleanup.data.MenuFilter
 import com.example.photocleanup.data.MenuMode
+import com.example.photocleanup.ui.components.HeroCard
 import com.example.photocleanup.ui.components.MenuCard
 import com.example.photocleanup.ui.components.MenuCardType
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.AccentPrimaryDim
 import com.example.photocleanup.viewmodel.MenuViewModel
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.Shuffle
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -160,24 +164,53 @@ fun MenuScreen(
                         ) {
                             when (uiState.menuMode) {
                                 MenuMode.BY_DATE -> {
-                                    // All Media card (if available)
+                                    // Hero cards row (All Media + Random)
                                     uiState.allMediaStats?.let { stats ->
-                                        item(key = "all_media") {
-                                            MenuCard(
-                                                title = stringResource(R.string.menu_all_media),
-                                                reviewedCount = stats.reviewedCount,
-                                                totalCount = stats.totalCount,
-                                                cardType = MenuCardType.ALL_MEDIA,
-                                                onClick = {
-                                                    onNavigateToSwipe(
-                                                        MenuFilter(
-                                                            mode = MenuMode.BY_DATE,
-                                                            isAllMedia = true,
-                                                            displayTitle = "All Media"
+                                        item(key = "hero_cards") {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                HeroCard(
+                                                    title = stringResource(R.string.menu_all_media),
+                                                    icon = Icons.Default.Photo,
+                                                    reviewedCount = stats.reviewedCount,
+                                                    totalCount = stats.totalCount,
+                                                    thumbnailUri = uiState.mostRecentMediaUri,
+                                                    onClick = {
+                                                        onNavigateToSwipe(
+                                                            MenuFilter(
+                                                                mode = MenuMode.BY_DATE,
+                                                                isAllMedia = true,
+                                                                displayTitle = "All Media"
+                                                            )
                                                         )
-                                                    )
-                                                }
-                                            )
+                                                    },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                HeroCard(
+                                                    title = stringResource(R.string.menu_random),
+                                                    icon = Icons.Default.Shuffle,
+                                                    reviewedCount = stats.reviewedCount,
+                                                    totalCount = stats.totalCount,
+                                                    thumbnailUri = uiState.randomMediaUri,
+                                                    showLock = !viewModel.isPremium,
+                                                    onClick = {
+                                                        if (viewModel.isPremium) {
+                                                            onNavigateToSwipe(
+                                                                MenuFilter(
+                                                                    mode = MenuMode.BY_DATE,
+                                                                    isRandom = true,
+                                                                    randomStartUri = uiState.randomMediaUri?.toString(),
+                                                                    displayTitle = "Random"
+                                                                )
+                                                            )
+                                                        }
+                                                        // TODO: Show upsell dialog when not premium
+                                                    },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
                                         }
                                     }
 

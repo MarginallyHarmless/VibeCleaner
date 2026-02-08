@@ -80,6 +80,10 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
             // This prevents the photo from disappearing when tapping an album
             val state = _uiState.value
             if (!state.isMovingPhoto && state.moveIntentSender == null && state.pendingMoveAlbum == null) {
+                // Don't reload for Random mode — reloading re-shuffles the list and
+                // resets currentIndex, making the user see the same photos repeatedly
+                if (state.menuFilter?.isRandom == true) return
+
                 // Reload using the same filter that was originally applied
                 if (state.menuFilter != null) {
                     loadPhotosWithMenuFilter(state.menuFilter)
@@ -146,6 +150,21 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
                 repository.getUnreviewedPhotos()
             } else {
                 when {
+                    menuFilter.isRandom -> {
+                        // Load all unreviewed media and shuffle for random order
+                        val shuffled = repository.loadAllMedia().shuffled().toMutableList()
+                        // Move the card thumbnail photo to the front so the user
+                        // sees the same image they tapped on
+                        val startUri = menuFilter.randomStartUri
+                        if (startUri != null) {
+                            val idx = shuffled.indexOfFirst { it.uri.toString() == startUri }
+                            if (idx > 0) {
+                                val item = shuffled.removeAt(idx)
+                                shuffled.add(0, item)
+                            }
+                        }
+                        shuffled
+                    }
                     menuFilter.isAllMedia -> {
                         repository.loadAllMedia()
                     }

@@ -134,7 +134,7 @@ fun SettingsTabScreen(
                     .padding(20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
                     Text(
                         text = "Premium Mode",
                         style = MaterialTheme.typography.titleMedium,

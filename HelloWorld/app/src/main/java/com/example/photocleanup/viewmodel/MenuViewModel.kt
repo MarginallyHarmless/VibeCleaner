@@ -1,10 +1,12 @@
 package com.example.photocleanup.viewmodel
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.photocleanup.PhotoCleanupApp
 import com.example.photocleanup.data.AlbumGroup
+import com.example.photocleanup.data.AppPreferences
 import com.example.photocleanup.data.MenuMode
 import com.example.photocleanup.data.MonthGroup
 import com.example.photocleanup.data.PhotoRepository
@@ -20,12 +22,17 @@ data class MenuUiState(
     val monthGroups: List<MonthGroup> = emptyList(),
     val albumGroups: List<AlbumGroup> = emptyList(),
     val allMediaStats: AllMediaStats? = null,
-    val hasAnyUnreviewedPhotos: Boolean = true
+    val hasAnyUnreviewedPhotos: Boolean = true,
+    val mostRecentMediaUri: Uri? = null,
+    val randomMediaUri: Uri? = null
 )
 
 class MenuViewModel(application: Application) : AndroidViewModel(application) {
     private val database = (application as PhotoCleanupApp).database
     private val repository = PhotoRepository(application, database.reviewedPhotoDao())
+    private val appPreferences = AppPreferences(application)
+
+    val isPremium: Boolean get() = appPreferences.isPremium
 
     private val _uiState = MutableStateFlow(MenuUiState())
     val uiState: StateFlow<MenuUiState> = _uiState.asStateFlow()
@@ -42,6 +49,8 @@ class MenuViewModel(application: Application) : AndroidViewModel(application) {
             val monthGroups = repository.getPhotosByMonth()
             val albumGroups = repository.getPhotosByAlbum()
             val allMediaStats = repository.getAllMediaStats()
+            val mostRecentUri = repository.getMostRecentMediaUri()
+            val randomUri = repository.getRandomThumbnailUri()
 
             // Check if there are any unreviewed photos
             val hasUnreviewed = monthGroups.isNotEmpty() || albumGroups.isNotEmpty()
@@ -51,7 +60,9 @@ class MenuViewModel(application: Application) : AndroidViewModel(application) {
                 monthGroups = monthGroups,
                 albumGroups = albumGroups,
                 allMediaStats = allMediaStats,
-                hasAnyUnreviewedPhotos = hasUnreviewed
+                hasAnyUnreviewedPhotos = hasUnreviewed,
+                mostRecentMediaUri = mostRecentUri,
+                randomMediaUri = randomUri
             )
         }
     }
