@@ -279,10 +279,11 @@ class DuplicateScanWorker(
     private fun queryAllPhotos(): List<PhotoInfo> {
         val photos = mutableListOf<PhotoInfo>()
 
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        // Query all mounted volumes (internal + SD cards)
+        val volumes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.getExternalVolumeNames(applicationContext)
         } else {
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            setOf(MediaStore.VOLUME_EXTERNAL)
         }
 
         val projection = arrayOf(
@@ -297,53 +298,57 @@ class DuplicateScanWorker(
             MediaStore.Images.Media.ORIENTATION
         )
 
-        applicationContext.contentResolver.query(
-            collection,
-            projection,
-            null,
-            null,
-            "${MediaStore.Images.Media.DATE_ADDED} DESC"
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val displayNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
-            val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
-            val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
-            val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-            val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
-            val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
-            val orientationColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.ORIENTATION)
+        for (volume in volumes) {
+            val collection = MediaStore.Images.Media.getContentUri(volume)
 
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idColumn)
-                val uri = ContentUris.withAppendedId(collection, id).toString()
-                val displayName = cursor.getString(displayNameColumn) ?: "unknown"
-                val rawWidth = cursor.getInt(widthColumn)
-                val rawHeight = cursor.getInt(heightColumn)
-                val orientation = cursor.getInt(orientationColumn)
+            applicationContext.contentResolver.query(
+                collection,
+                projection,
+                null,
+                null,
+                "${MediaStore.Images.Media.DATE_ADDED} DESC"
+            )?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                val displayNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+                val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
+                val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
+                val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
+                val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+                val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
+                val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+                val orientationColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.ORIENTATION)
 
-                // Calculate effective dimensions based on EXIF rotation
-                // 90° and 270° rotations swap width and height
-                val (effectiveWidth, effectiveHeight) = if (orientation == 90 || orientation == 270) {
-                    rawHeight to rawWidth
-                } else {
-                    rawWidth to rawHeight
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idColumn)
+                    val uri = ContentUris.withAppendedId(collection, id).toString()
+                    val displayName = cursor.getString(displayNameColumn) ?: "unknown"
+                    val rawWidth = cursor.getInt(widthColumn)
+                    val rawHeight = cursor.getInt(heightColumn)
+                    val orientation = cursor.getInt(orientationColumn)
+
+                    // Calculate effective dimensions based on EXIF rotation
+                    // 90° and 270° rotations swap width and height
+                    val (effectiveWidth, effectiveHeight) = if (orientation == 90 || orientation == 270) {
+                        rawHeight to rawWidth
+                    } else {
+                        rawWidth to rawHeight
+                    }
+
+                    // Log photo info for debugging (helps identify test photos by name)
+                    val fileSize = cursor.getLong(sizeColumn)
+                    Log.d(TAG, "Photo: id=$id, name=$displayName, ${effectiveWidth}x${effectiveHeight}, size=${fileSize/1024}KB, orientation=$orientation, volume=$volume")
+
+                    photos.add(PhotoInfo(
+                        uri = uri,
+                        displayName = displayName,
+                        size = cursor.getLong(sizeColumn),
+                        width = effectiveWidth,
+                        height = effectiveHeight,
+                        dateAdded = cursor.getLong(dateAddedColumn),
+                        bucketId = cursor.getLong(bucketIdColumn),
+                        bucketName = cursor.getString(bucketNameColumn) ?: "Unknown"
+                    ))
                 }
-
-                // Log photo info for debugging (helps identify test photos by name)
-                val fileSize = cursor.getLong(sizeColumn)
-                Log.d(TAG, "Photo: id=$id, name=$displayName, ${effectiveWidth}x${effectiveHeight}, size=${fileSize/1024}KB, orientation=$orientation")
-
-                photos.add(PhotoInfo(
-                    uri = uri,
-                    displayName = displayName,
-                    size = cursor.getLong(sizeColumn),
-                    width = effectiveWidth,
-                    height = effectiveHeight,
-                    dateAdded = cursor.getLong(dateAddedColumn),
-                    bucketId = cursor.getLong(bucketIdColumn),
-                    bucketName = cursor.getString(bucketNameColumn) ?: "Unknown"
-                ))
             }
         }
 

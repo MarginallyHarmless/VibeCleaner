@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -20,6 +21,10 @@ class PhotoRepository(
     private val reviewedPhotoDao: ReviewedPhotoDao,
     private val includeVideos: Boolean = false
 ) {
+    companion object {
+        private const val TAG = "PhotoRepository"
+    }
+
     /**
      * Check if app has full storage access (MANAGE_EXTERNAL_STORAGE permission on Android 11+).
      * When granted, photo moves don't require per-file permission dialogs.
@@ -30,6 +35,37 @@ class PhotoRepository(
         } else {
             // On Android 10 and below, we don't need this permission
             true
+        }
+    }
+
+    // ==================== Multi-volume helpers ====================
+
+    /**
+     * Get content URIs for images across all mounted volumes (internal + SD cards).
+     * On API 29+ this discovers SD cards via getExternalVolumeNames().
+     */
+    private fun getImageUris(): List<Uri> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val volumes = MediaStore.getExternalVolumeNames(context)
+            Log.d(TAG, "Discovered volumes: $volumes")
+            volumes.map { volume ->
+                MediaStore.Images.Media.getContentUri(volume)
+            }
+        } else {
+            listOf(MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        }
+    }
+
+    /**
+     * Get content URIs for videos across all mounted volumes (internal + SD cards).
+     */
+    private fun getVideoUris(): List<Uri> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.getExternalVolumeNames(context).map { volume ->
+                MediaStore.Video.Media.getContentUri(volume)
+            }
+        } else {
+            listOf(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
         }
     }
 
@@ -80,7 +116,8 @@ class PhotoRepository(
     }
 
     /**
-     * Query both image and (optionally) video stores, merge and sort by DATE_ADDED DESC.
+     * Query both image and (optionally) video stores across all volumes,
+     * merge and sort by DATE_ADDED DESC.
      */
     private fun queryMediaItems(
         selection: String? = null,
@@ -88,16 +125,16 @@ class PhotoRepository(
     ): List<MediaItem> {
         val results = mutableListOf<Pair<Long, MediaItem>>()
 
-        // Always query images
-        results.addAll(querySingleStore(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false, selection, selectionArgs
-        ))
+        // Query images from all volumes (internal + SD cards)
+        for (uri in getImageUris()) {
+            results.addAll(querySingleStore(uri, false, selection, selectionArgs))
+        }
 
-        // Only query videos if unlocked
+        // Query videos from all volumes if unlocked
         if (includeVideos) {
-            results.addAll(querySingleStore(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, selection, selectionArgs
-            ))
+            for (uri in getVideoUris()) {
+                results.addAll(querySingleStore(uri, true, selection, selectionArgs))
+            }
         }
 
         return results.sortedByDescending { it.first }.map { it.second }
@@ -298,39 +335,35 @@ class PhotoRepository(
 
     private fun getAlbumRelativePath(albumName: String): String? {
         // Query MediaStore to find an existing item in the target album to get its relative path
-        // Try images first, then videos
+        // Try images first, then videos — across all volumes
         val projection = arrayOf(MediaStore.MediaColumns.RELATIVE_PATH)
         val selection = "${MediaStore.MediaColumns.BUCKET_DISPLAY_NAME} = ?"
         val selectionArgs = arrayOf(albumName)
 
-        context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val pathColumn = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
-                if (pathColumn >= 0) {
-                    return cursor.getString(pathColumn)
+        for (uri in getImageUris()) {
+            context.contentResolver.query(
+                uri, projection, selection, selectionArgs, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val pathColumn = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+                    if (pathColumn >= 0) {
+                        return cursor.getString(pathColumn)
+                    }
                 }
             }
         }
 
         // Also check videos if unlocked (album might only contain videos)
         if (includeVideos) {
-            context.contentResolver.query(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                projection,
-                selection,
-                selectionArgs,
-                null
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val pathColumn = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
-                    if (pathColumn >= 0) {
-                        return cursor.getString(pathColumn)
+            for (uri in getVideoUris()) {
+                context.contentResolver.query(
+                    uri, projection, selection, selectionArgs, null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val pathColumn = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+                        if (pathColumn >= 0) {
+                            return cursor.getString(pathColumn)
+                        }
                     }
                 }
             }
@@ -474,9 +507,13 @@ class PhotoRepository(
     suspend fun getAvailableFolders(): List<FolderInfo> = withContext(Dispatchers.IO) {
         val folders = mutableMapOf<Long, Pair<String, Int>>()
 
-        collectFolderCounts(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, folders)
+        for (uri in getImageUris()) {
+            collectFolderCounts(uri, folders)
+        }
         if (includeVideos) {
-            collectFolderCounts(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, folders)
+            for (uri in getVideoUris()) {
+                collectFolderCounts(uri, folders)
+            }
         }
 
         folders.map { (id, pair) ->
@@ -534,9 +571,13 @@ class PhotoRepository(
     suspend fun getPhotosByMonth(): List<MonthGroup> = withContext(Dispatchers.IO) {
         val monthCounts = mutableMapOf<Pair<Int, Int>, MutableList<String>>()
 
-        collectMonthUris(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, monthCounts)
+        for (uri in getImageUris()) {
+            collectMonthUris(uri, monthCounts)
+        }
         if (includeVideos) {
-            collectMonthUris(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, monthCounts)
+            for (uri in getVideoUris()) {
+                collectMonthUris(uri, monthCounts)
+            }
         }
 
         val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
@@ -630,9 +671,13 @@ class PhotoRepository(
     suspend fun getPhotosByAlbum(): List<AlbumGroup> = withContext(Dispatchers.IO) {
         val albumCounts = mutableMapOf<Long, Pair<String, MutableList<String>>>()
 
-        collectAlbumUris(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, albumCounts)
+        for (uri in getImageUris()) {
+            collectAlbumUris(uri, albumCounts)
+        }
         if (includeVideos) {
-            collectAlbumUris(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, albumCounts)
+            for (uri in getVideoUris()) {
+                collectAlbumUris(uri, albumCounts)
+            }
         }
 
         val reviewedUris = reviewedPhotoDao.getAllReviewedUris().toSet()
@@ -665,42 +710,32 @@ class PhotoRepository(
         val uris = mutableListOf<String>()
         val projection = arrayOf(MediaStore.MediaColumns._ID)
 
-        // Images
-        context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            null,
-            null,
-            null
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idColumn)
-                val uri = ContentUris.withAppendedId(
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    id
-                ).toString()
-                uris.add(uri)
-            }
-        }
-
-        // Videos (if unlocked)
-        if (includeVideos) {
+        // Images from all volumes
+        for (contentUri in getImageUris()) {
             context.contentResolver.query(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                projection,
-                null,
-                null,
-                null
+                contentUri, projection, null, null, null
             )?.use { cursor ->
                 val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idColumn)
-                    val uri = ContentUris.withAppendedId(
-                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                        id
-                    ).toString()
+                    val uri = ContentUris.withAppendedId(contentUri, id).toString()
                     uris.add(uri)
+                }
+            }
+        }
+
+        // Videos from all volumes (if unlocked)
+        if (includeVideos) {
+            for (contentUri in getVideoUris()) {
+                context.contentResolver.query(
+                    contentUri, projection, null, null, null
+                )?.use { cursor ->
+                    val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(idColumn)
+                        val uri = ContentUris.withAppendedId(contentUri, id).toString()
+                        uris.add(uri)
+                    }
                 }
             }
         }
@@ -767,9 +802,13 @@ class PhotoRepository(
             }
         }
 
-        collectFromStore(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, false)
+        for (uri in getImageUris()) {
+            collectFromStore(uri, false)
+        }
         if (includeVideos) {
-            collectFromStore(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
+            for (uri in getVideoUris()) {
+                collectFromStore(uri, true)
+            }
         }
 
         // Sort by date, filter reviewed
@@ -807,22 +846,21 @@ class PhotoRepository(
      * Get the URI of the most recently added media item (for hero card thumbnail).
      */
     suspend fun getMostRecentMediaUri(): Uri? = withContext(Dispatchers.IO) {
-        val items = querySingleStore(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            isVideo = false,
-            sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
-        )
-        val result = items.firstOrNull()?.second?.uri
+        // Query all image volumes and find the most recent
+        val allImageItems = getImageUris().flatMap { uri ->
+            querySingleStore(uri, isVideo = false,
+                sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC")
+        }
+        val result = allImageItems.maxByOrNull { it.first }?.second?.uri
         if (result != null) return@withContext result
 
         // Fall back to video if no images
         if (includeVideos) {
-            val videoItems = querySingleStore(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                isVideo = true,
-                sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
-            )
-            videoItems.firstOrNull()?.second?.uri
+            val allVideoItems = getVideoUris().flatMap { uri ->
+                querySingleStore(uri, isVideo = true,
+                    sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC")
+            }
+            allVideoItems.maxByOrNull { it.first }?.second?.uri
         } else null
     }
 

@@ -101,20 +101,27 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Register content observer to detect new photos
+        // Register content observer to detect new photos across all volumes (internal + SD cards)
         val app = getApplication<PhotoCleanupApp>()
-        app.contentResolver.registerContentObserver(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            true,
-            contentObserver
-        )
-        // Also observe video store if videos are unlocked
-        if (appPreferences.isVideosUnlocked) {
+        val volumes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.getExternalVolumeNames(app)
+        } else {
+            setOf(MediaStore.VOLUME_EXTERNAL)
+        }
+        for (volume in volumes) {
             app.contentResolver.registerContentObserver(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                MediaStore.Images.Media.getContentUri(volume),
                 true,
                 contentObserver
             )
+            // Also observe video store if videos are unlocked
+            if (appPreferences.isVideosUnlocked) {
+                app.contentResolver.registerContentObserver(
+                    MediaStore.Video.Media.getContentUri(volume),
+                    true,
+                    contentObserver
+                )
+            }
         }
     }
 

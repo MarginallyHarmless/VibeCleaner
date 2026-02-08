@@ -1,6 +1,7 @@
 package com.example.photocleanup.viewmodel
 
 import android.app.Application
+import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -219,20 +220,27 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         val firstReviewDay = reviewedByDay.first().day
         val today = dateFormat.format(System.currentTimeMillis())
 
-        // Get all photo DATE_ADDED timestamps from MediaStore
+        // Get all photo DATE_ADDED timestamps from MediaStore (all volumes)
         val context = getApplication<Application>()
         val photoDayCountMap = mutableMapOf<String, Int>()
 
         val projection = arrayOf(MediaStore.MediaColumns.DATE_ADDED)
-        context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection, null, null, null
-        )?.use { cursor ->
-            val dateCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
-            while (cursor.moveToNext()) {
-                val dateAdded = cursor.getLong(dateCol) * 1000 // seconds → millis
-                val day = dateFormat.format(dateAdded)
-                photoDayCountMap[day] = (photoDayCountMap[day] ?: 0) + 1
+        val volumes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.getExternalVolumeNames(context)
+        } else {
+            setOf(MediaStore.VOLUME_EXTERNAL)
+        }
+        for (volume in volumes) {
+            val contentUri = MediaStore.Images.Media.getContentUri(volume)
+            context.contentResolver.query(
+                contentUri, projection, null, null, null
+            )?.use { cursor ->
+                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+                while (cursor.moveToNext()) {
+                    val dateAdded = cursor.getLong(dateCol) * 1000 // seconds → millis
+                    val day = dateFormat.format(dateAdded)
+                    photoDayCountMap[day] = (photoDayCountMap[day] ?: 0) + 1
+                }
             }
         }
 
@@ -298,14 +306,22 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun countPhotosOnDevice(): Int {
         val context = getApplication<Application>()
-        val cursor = context.contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            arrayOf(MediaStore.MediaColumns._ID),
-            null, null, null
-        )
-        val count = cursor?.count ?: 0
-        cursor?.close()
-        return count
+        var totalCount = 0
+        val volumes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.getExternalVolumeNames(context)
+        } else {
+            setOf(MediaStore.VOLUME_EXTERNAL)
+        }
+        for (volume in volumes) {
+            val contentUri = MediaStore.Images.Media.getContentUri(volume)
+            val cursor = context.contentResolver.query(
+                contentUri, arrayOf(MediaStore.MediaColumns._ID),
+                null, null, null
+            )
+            totalCount += cursor?.count ?: 0
+            cursor?.close()
+        }
+        return totalCount
     }
 
     private fun calculateAvgPerSession(timestamps: List<Long>): Int {
