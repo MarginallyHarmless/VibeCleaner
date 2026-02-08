@@ -48,7 +48,8 @@ class PhotoRepository(
         val results = mutableListOf<Pair<Long, MediaItem>>()
         val baseProjection = mutableListOf(
             MediaStore.MediaColumns._ID,
-            MediaStore.MediaColumns.DATE_ADDED
+            MediaStore.MediaColumns.DATE_ADDED,
+            MediaStore.MediaColumns.SIZE
         )
         if (isVideo) {
             baseProjection.add(MediaStore.Video.Media.DURATION)
@@ -63,14 +64,16 @@ class PhotoRepository(
         )?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
             val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
             val durationColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.DURATION) else -1
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
                 val dateAdded = cursor.getLong(dateColumn)
+                val fileSize = cursor.getLong(sizeColumn)
                 val duration = if (durationColumn >= 0) cursor.getLong(durationColumn) else 0L
                 val uri = ContentUris.withAppendedId(contentUri, id)
-                results.add(dateAdded to MediaItem(uri, isVideo, duration))
+                results.add(dateAdded to MediaItem(uri, isVideo, duration, fileSize))
             }
         }
         return results
@@ -156,12 +159,13 @@ class PhotoRepository(
         reviewedPhotoDao.getAllReviewedUris().toSet()
     }
 
-    suspend fun markAsReviewed(uri: Uri, action: String) {
+    suspend fun markAsReviewed(uri: Uri, action: String, fileSize: Long = 0L) {
         reviewedPhotoDao.insertReviewedPhoto(
             ReviewedPhoto(
                 uri = uri.toString(),
                 reviewedAt = System.currentTimeMillis(),
-                action = action
+                action = action,
+                fileSize = fileSize
             )
         )
     }
@@ -727,7 +731,8 @@ class PhotoRepository(
         fun collectFromStore(contentUri: Uri, isVideo: Boolean) {
             val baseProjection = mutableListOf(
                 MediaStore.MediaColumns._ID,
-                MediaStore.MediaColumns.DATE_ADDED
+                MediaStore.MediaColumns.DATE_ADDED,
+                MediaStore.MediaColumns.SIZE
             )
             if (isVideo) baseProjection.add(MediaStore.Video.Media.DURATION)
 
@@ -740,12 +745,14 @@ class PhotoRepository(
             )?.use { cursor ->
                 val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                 val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+                val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
                 val durationColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.DURATION) else -1
                 val calendar = Calendar.getInstance()
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idColumn)
                     val dateAdded = cursor.getLong(dateColumn)
+                    val fileSize = cursor.getLong(sizeColumn)
 
                     calendar.timeInMillis = dateAdded * 1000
                     val photoYear = calendar.get(Calendar.YEAR)
@@ -754,7 +761,7 @@ class PhotoRepository(
                     if (photoYear == year && photoMonth == month) {
                         val duration = if (durationColumn >= 0) cursor.getLong(durationColumn) else 0L
                         val uri = ContentUris.withAppendedId(contentUri, id)
-                        items.add(dateAdded to MediaItem(uri, isVideo, duration))
+                        items.add(dateAdded to MediaItem(uri, isVideo, duration, fileSize))
                     }
                 }
             }

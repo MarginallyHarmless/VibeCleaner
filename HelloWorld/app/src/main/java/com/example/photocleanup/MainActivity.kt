@@ -32,11 +32,13 @@ import com.example.photocleanup.ui.screens.MainScreen
 import com.example.photocleanup.ui.screens.MenuScreen
 import com.example.photocleanup.ui.screens.SettingsTabScreen
 import com.example.photocleanup.ui.screens.PhotoScannerScreen
+import com.example.photocleanup.ui.screens.StatsScreen
 import com.example.photocleanup.ui.screens.ToDeleteScreen
 import com.example.photocleanup.ui.theme.CleanMyPhotosTheme
 import com.example.photocleanup.viewmodel.PhotoScannerViewModel
 import com.example.photocleanup.viewmodel.MenuViewModel
 import com.example.photocleanup.viewmodel.PhotoViewModel
+import com.example.photocleanup.viewmodel.StatsViewModel
 import com.example.photocleanup.viewmodel.ToDeleteViewModel
 
 class MainActivity : ComponentActivity() {
@@ -65,6 +67,7 @@ class MainActivity : ComponentActivity() {
                     val bottomNavRoutes = listOf(
                         BottomNavItem.Cleanup.route,
                         BottomNavItem.PhotoScanner.route,
+                        BottomNavItem.Stats.route,
                         BottomNavItem.Settings.route
                     )
                     val showBottomNav = currentRoute in bottomNavRoutes
@@ -163,6 +166,18 @@ class MainActivity : ComponentActivity() {
                                 PhotoScannerScreen(
                                     viewModel = photoScannerViewModel
                                 )
+                            }
+
+                            // Stats tab (fade only for tab switches)
+                            composable(
+                                route = BottomNavItem.Stats.route,
+                                enterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
+                                exitTransition = { fadeOut(animationSpec = tween(transitionDuration)) },
+                                popEnterTransition = { fadeIn(animationSpec = tween(transitionDuration)) },
+                                popExitTransition = { fadeOut(animationSpec = tween(transitionDuration)) }
+                            ) {
+                                val statsViewModel: StatsViewModel = viewModel()
+                                StatsScreen(viewModel = statsViewModel)
                             }
 
                             // Settings tab (fade only for tab switches)

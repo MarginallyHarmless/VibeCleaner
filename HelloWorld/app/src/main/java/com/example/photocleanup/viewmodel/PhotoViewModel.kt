@@ -230,7 +230,7 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
         val currentPhoto = _uiState.value.currentPhoto ?: return
         val currentIndex = _uiState.value.currentIndex
         viewModelScope.launch {
-            repository.markAsReviewed(currentPhoto.uri, "keep")
+            repository.markAsReviewed(currentPhoto.uri, "keep", currentPhoto.fileSize)
             _uiState.value = _uiState.value.copy(
                 lastAction = UndoableAction(currentPhoto, "keep", currentIndex)
             )
@@ -242,7 +242,7 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
         val currentPhoto = _uiState.value.currentPhoto ?: return
         val currentIndex = _uiState.value.currentIndex
         viewModelScope.launch {
-            repository.markAsReviewed(currentPhoto.uri, "to_delete")
+            repository.markAsReviewed(currentPhoto.uri, "to_delete", currentPhoto.fileSize)
             _uiState.value = _uiState.value.copy(
                 lastAction = UndoableAction(currentPhoto, "to_delete", currentIndex)
             )

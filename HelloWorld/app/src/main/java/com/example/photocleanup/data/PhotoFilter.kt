@@ -6,7 +6,8 @@ import android.net.Uri
 data class MediaItem(
     val uri: Uri,
     val isVideo: Boolean,
-    val durationMs: Long = 0L
+    val durationMs: Long = 0L,
+    val fileSize: Long = 0L
 )
 
 data class PhotoFilter(

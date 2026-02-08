@@ -7,5 +7,6 @@ import androidx.room.PrimaryKey
 data class ReviewedPhoto(
     @PrimaryKey val uri: String,
     val reviewedAt: Long,
-    val action: String // "keep" or "deleted"
+    val action: String, // "keep" or "deleted"
+    val fileSize: Long = 0L // File size in bytes (for space recovered stats)
 )

@@ -81,4 +81,54 @@ interface PhotoHashDao {
      */
     @Query("SELECT * FROM photo_hashes WHERE qualityIssues != '' ORDER BY dateAdded DESC")
     suspend fun getLowQualityPhotosOnce(): List<PhotoHash>
+
+    // ==================== Stats Queries ====================
+
+    @Query("""
+        SELECT COALESCE(SUM(ph.fileSize), 0)
+        FROM photo_hashes ph
+        INNER JOIN reviewed_photos rp ON ph.uri = rp.uri
+        WHERE rp.action = 'deleted'
+    """)
+    suspend fun getDeletedPhotosSizeSum(): Long
+
+    @Query("""
+        SELECT strftime('%Y-%m', rp.reviewedAt / 1000, 'unixepoch') AS month,
+               COALESCE(SUM(ph.fileSize), 0) AS bytes
+        FROM photo_hashes ph
+        INNER JOIN reviewed_photos rp ON ph.uri = rp.uri
+        WHERE rp.action = 'deleted'
+        GROUP BY month
+        ORDER BY month
+    """)
+    suspend fun getDeletedPhotosSizeByMonth(): List<MonthBytes>
+
+    @Query("""
+        SELECT ph.fileSize, ph.dateAdded
+        FROM photo_hashes ph
+        INNER JOIN reviewed_photos rp ON ph.uri = rp.uri
+        WHERE rp.action = 'deleted'
+        ORDER BY ph.fileSize DESC
+        LIMIT 1
+    """)
+    suspend fun getLargestDeletedFile(): LargestFile?
+
+    @Query("SELECT qualityIssues FROM photo_hashes WHERE qualityIssues != ''")
+    suspend fun getAllQualityIssues(): List<String>
+
+    @Query("SELECT COUNT(*) FROM photo_hashes WHERE qualityIssues = '' AND overallQuality > 0.7")
+    suspend fun getSharpPhotoCount(): Int
+
+    @Query("SELECT COUNT(*) FROM photo_hashes WHERE qualityIssues = '' AND overallQuality BETWEEN 0.5 AND 0.7")
+    suspend fun getSlightlySoftPhotoCount(): Int
 }
+
+data class MonthBytes(
+    val month: String,
+    val bytes: Long
+)
+
+data class LargestFile(
+    val fileSize: Long,
+    val dateAdded: Long
+)

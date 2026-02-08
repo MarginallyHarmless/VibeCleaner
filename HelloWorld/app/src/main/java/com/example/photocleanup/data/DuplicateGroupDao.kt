@@ -88,4 +88,13 @@ interface DuplicateGroupDao {
      */
     @Query("SELECT EXISTS(SELECT 1 FROM duplicate_groups WHERE photoUri = :uri)")
     suspend fun existsByUri(uri: String): Boolean
+
+    // ==================== Stats Queries ====================
+
+    /**
+     * Count extra copies in duplicate groups (total photos - number of groups).
+     * Each group has 1 "original" so the rest are extra copies.
+     */
+    @Query("SELECT COUNT(*) - COUNT(DISTINCT groupId) FROM duplicate_groups")
+    suspend fun getExtraCopiesCount(): Int
 }
