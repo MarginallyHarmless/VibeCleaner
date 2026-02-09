@@ -44,9 +44,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -182,7 +179,6 @@ fun MainScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .windowInsetsPadding(WindowInsets.statusBars)
                     ) {
                         // Top bar - ALWAYS shown when not loading
                         Row(

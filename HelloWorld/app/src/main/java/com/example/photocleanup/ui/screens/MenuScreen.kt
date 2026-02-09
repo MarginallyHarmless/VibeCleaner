@@ -28,9 +28,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -105,7 +102,6 @@ fun MenuScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .windowInsetsPadding(WindowInsets.statusBars)
                             .padding(horizontal = 16.dp)
                     ) {
                         Spacer(modifier = Modifier.height(16.dp))

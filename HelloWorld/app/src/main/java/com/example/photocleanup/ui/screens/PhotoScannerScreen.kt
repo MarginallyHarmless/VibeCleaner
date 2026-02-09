@@ -17,14 +17,13 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -36,6 +35,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -79,7 +80,10 @@ import com.example.photocleanup.ui.components.LowQualityPhotoCard
 import com.example.photocleanup.ui.components.ScanStatusCard
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.AccentPrimaryDim
+import com.example.photocleanup.ui.theme.CarbonBlack
 import com.example.photocleanup.ui.theme.DarkBackground
+import com.example.photocleanup.ui.theme.HoneyBronze
+import com.example.photocleanup.ui.components.formatBytes
 import com.example.photocleanup.ui.theme.TextSecondary
 import com.example.photocleanup.viewmodel.PhotoScannerViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -176,7 +180,6 @@ fun PhotoScannerScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.statusBars)
                     .padding(horizontal = 16.dp)
             ) {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -196,7 +199,11 @@ fun PhotoScannerScreen(
                         scanState = scanState,
                         selectedTab = selectedTab,
                         groupCount = groupCount,
-                        lowQualityCount = lowQualityCount
+                        lowQualityCount = lowQualityCount,
+                        duplicateSizeBytes = duplicateGroups.sumOf { group ->
+                            group.photos.sumOf { it.fileSize }
+                        },
+                        lowQualitySizeBytes = lowQualityPhotos.sumOf { it.fileSize }
                     ),
                     style = MaterialTheme.typography.bodyLarge,
                     color = TextSecondary,
@@ -267,13 +274,26 @@ fun PhotoScannerScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (!viewModel.isPremium) {
-                                AppButton(
-                                    text = "Delete",
+                                Button(
                                     onClick = { showUpsellSheet = true },
-                                    intent = ButtonIntent.Destructive,
-                                    leadingIcon = Icons.Filled.Lock,
-                                    fillWidth = false
-                                )
+                                    shape = RoundedCornerShape(24.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = HoneyBronze,
+                                        contentColor = CarbonBlack
+                                    ),
+                                    modifier = Modifier.heightIn(min = 48.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Lock,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Unlock To Delete",
+                                        style = MaterialTheme.typography.labelLarge
+                                    )
+                                }
                             } else if (selectedPhotoIds.isNotEmpty()) {
                                 AppButton(
                                     text = "Delete ${selectedPhotoIds.size} photos",
@@ -303,13 +323,26 @@ fun PhotoScannerScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (!viewModel.isPremium) {
-                                AppButton(
-                                    text = "Delete",
+                                Button(
                                     onClick = { showUpsellSheet = true },
-                                    intent = ButtonIntent.Destructive,
-                                    leadingIcon = Icons.Filled.Lock,
-                                    fillWidth = false
-                                )
+                                    shape = RoundedCornerShape(24.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = HoneyBronze,
+                                        contentColor = CarbonBlack
+                                    ),
+                                    modifier = Modifier.heightIn(min = 48.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Lock,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Unlock To Delete",
+                                        style = MaterialTheme.typography.labelLarge
+                                    )
+                                }
                             } else if (selectedLowQualityUris.isNotEmpty()) {
                                 AppButton(
                                     text = "Delete ${selectedLowQualityUris.size} photos",
@@ -356,7 +389,9 @@ private fun getSubtitle(
     scanState: ScanState,
     selectedTab: PhotoScannerTab,
     groupCount: Int,
-    lowQualityCount: Int
+    lowQualityCount: Int,
+    duplicateSizeBytes: Long,
+    lowQualitySizeBytes: Long
 ): String {
     return when {
         scanState is ScanState.Scanning || scanState is ScanState.Queued ->
@@ -365,8 +400,8 @@ private fun getSubtitle(
             "No issues found"
         groupCount > 0 || lowQualityCount > 0 -> {
             val parts = mutableListOf<String>()
-            if (groupCount > 0) parts.add("$groupCount duplicate groups")
-            if (lowQualityCount > 0) parts.add("$lowQualityCount low quality")
+            if (groupCount > 0) parts.add("$groupCount duplicates (${formatBytes(duplicateSizeBytes)})")
+            if (lowQualityCount > 0) parts.add("$lowQualityCount low quality (${formatBytes(lowQualitySizeBytes)})")
             parts.joinToString(", ")
         }
         else -> when (selectedTab) {

@@ -6,15 +6,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -80,7 +76,6 @@ fun SettingsTabScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .windowInsetsPadding(WindowInsets.statusBars)
             .padding(horizontal = 16.dp)
     ) {
         Spacer(modifier = Modifier.height(16.dp))
@@ -94,59 +89,6 @@ fun SettingsTabScreen(
             modifier = Modifier.padding(bottom = 24.dp)
         )
 
-        // Reset Reviews Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Reset Reviews",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = "Clear all your review history and start fresh. This will not restore any deleted photos.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                AppButton(
-                    text = "Reset All Reviews",
-                    onClick = { showResetDialog = true },
-                    variant = ButtonVariant.Secondary
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
         // Premium card
         if (!premiumEnabled) {
             // Upsell card
@@ -156,8 +98,7 @@ fun SettingsTabScreen(
                 colors = CardDefaults.cardColors(
                     containerColor = HoneyBronzeDim.copy(alpha = 0.3f)
                 ),
-                border = BorderStroke(1.dp, HoneyBronze.copy(alpha = 0.4f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                border = BorderStroke(1.dp, HoneyBronze.copy(alpha = 0.4f))
             ) {
                 Column(
                     modifier = Modifier
@@ -237,8 +178,7 @@ fun SettingsTabScreen(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = HoneyBronze.copy(alpha = 0.1f)
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                )
             ) {
                 Column(
                     modifier = Modifier
@@ -294,18 +234,12 @@ fun SettingsTabScreen(
                     .padding(20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                    Text(
-                        text = "Premium Mode",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "Unlock paid features (video support, etc.). Restart app after toggling.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Text(
+                    text = "Premium Mode",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f).padding(end = 16.dp)
+                )
                 Switch(
                     checked = premiumEnabled,
                     onCheckedChange = {
@@ -313,6 +247,59 @@ fun SettingsTabScreen(
                         appPreferences.isPremium = it
                     },
                     colors = SwitchDefaults.colors(checkedTrackColor = AccentPrimary)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Reset Reviews Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Reset Reviews",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Clear all your review history and start fresh. This will not restore any deleted photos.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                AppButton(
+                    text = "Reset All Reviews",
+                    onClick = { showResetDialog = true },
+                    variant = ButtonVariant.Secondary
                 )
             }
         }

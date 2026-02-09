@@ -5,13 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -88,7 +85,6 @@ fun StatsScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.statusBars)
             .padding(horizontal = 16.dp)
     ) {
         // Title
@@ -151,7 +147,8 @@ fun StatsScreen(
         item {
             PremiumOverlay(
                 isLocked = !viewModel.isPremium,
-                onLockedClick = { showUpsellSheet = true }
+                onLockedClick = { showUpsellSheet = true },
+                cornerRadius = 12.dp
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -180,7 +177,8 @@ fun StatsScreen(
         item {
             PremiumOverlay(
                 isLocked = !viewModel.isPremium,
-                onLockedClick = { showUpsellSheet = true }
+                onLockedClick = { showUpsellSheet = true },
+                cornerRadius = 12.dp
             ) {
                 if (viewModel.isPremium && uiState.totalPhotosOnDevice > 0) {
                     ReviewedRatioBar(

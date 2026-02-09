@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.photocleanup.ui.theme.CarbonBlack
@@ -33,6 +34,7 @@ fun PremiumOverlay(
     isLocked: Boolean,
     onLockedClick: () -> Unit,
     modifier: Modifier = Modifier,
+    cornerRadius: Dp = 16.dp,
     content: @Composable () -> Unit
 ) {
     Box(modifier = modifier) {
@@ -42,7 +44,7 @@ fun PremiumOverlay(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(cornerRadius))
                     .background(CarbonBlack.copy(alpha = 0.60f))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
