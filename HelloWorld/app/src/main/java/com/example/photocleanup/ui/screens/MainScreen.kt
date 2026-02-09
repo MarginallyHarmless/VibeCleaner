@@ -1,5 +1,6 @@
 package com.example.photocleanup.ui.screens
 
+import android.app.Activity
 import android.Manifest
 import android.os.Build
 import android.widget.Toast
@@ -61,6 +62,7 @@ import com.example.photocleanup.ui.components.AppButton
 import com.example.photocleanup.ui.components.ButtonVariant
 import com.example.photocleanup.ui.components.PremiumOverlay
 import com.example.photocleanup.ui.components.PremiumUpsellSheet
+import com.example.photocleanup.PhotoCleanupApp
 import com.example.photocleanup.ui.components.DialogButton
 import com.example.photocleanup.ui.components.DialogButtonIntent
 import com.example.photocleanup.ui.components.ProgressIndicator
@@ -86,6 +88,8 @@ fun MainScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val billingManager = (context.applicationContext as PhotoCleanupApp).billingManager
+    val activity = context as Activity
     var showUpsellSheet by remember { mutableStateOf(false) }
 
     // Track undo entry animation direction for the specific photo
@@ -330,8 +334,14 @@ fun MainScreen(
         if (showUpsellSheet) {
             PremiumUpsellSheet(
                 onDismiss = { showUpsellSheet = false },
-                onUnlockClick = { showUpsellSheet = false },
-                onRestoreClick = { showUpsellSheet = false }
+                onUnlockClick = {
+                    showUpsellSheet = false
+                    billingManager.launchPurchase(activity)
+                },
+                onRestoreClick = {
+                    showUpsellSheet = false
+                    billingManager.restorePurchase()
+                }
             )
         }
     }
@@ -358,7 +368,7 @@ private fun UndoButton(
         ) {
             Icon(
                 imageVector = Icons.Filled.Refresh,
-                contentDescription = null,
+                contentDescription = "Undo",
                 modifier = Modifier.size(18.dp),
                 tint = AccentPrimary.copy(alpha = contentAlpha)
             )
@@ -416,7 +426,7 @@ private fun ToDeleteBadge(
         ) {
             Icon(
                 imageVector = Icons.Default.Delete,
-                contentDescription = null,
+                contentDescription = "To delete",
                 modifier = Modifier.size(18.dp),
                 tint = ActionDelete.copy(alpha = contentAlpha)
             )

@@ -72,6 +72,7 @@ import com.example.photocleanup.ui.components.AppButton
 import com.example.photocleanup.ui.components.AppFab
 import com.example.photocleanup.ui.components.ButtonIntent
 import com.example.photocleanup.ui.components.PremiumUpsellSheet
+import com.example.photocleanup.PhotoCleanupApp
 import com.example.photocleanup.ui.components.DialogButton
 import com.example.photocleanup.ui.components.DialogButtonIntent
 import com.example.photocleanup.ui.components.DuplicateGroupCard
@@ -106,6 +107,7 @@ fun PhotoScannerScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val billingManager = (context.applicationContext as PhotoCleanupApp).billingManager
 
     // Shared state
     val selectedTab by viewModel.selectedTab.collectAsState()
@@ -285,7 +287,7 @@ fun PhotoScannerScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Lock,
-                                        contentDescription = null,
+                                        contentDescription = "Premium required",
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -334,7 +336,7 @@ fun PhotoScannerScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Lock,
-                                        contentDescription = null,
+                                        contentDescription = "Premium required",
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
@@ -377,8 +379,14 @@ fun PhotoScannerScreen(
         if (showUpsellSheet) {
             PremiumUpsellSheet(
                 onDismiss = { showUpsellSheet = false },
-                onUnlockClick = { showUpsellSheet = false },
-                onRestoreClick = { showUpsellSheet = false }
+                onUnlockClick = {
+                    showUpsellSheet = false
+                    activity?.let { billingManager.launchPurchase(it) }
+                },
+                onRestoreClick = {
+                    showUpsellSheet = false
+                    billingManager.restorePurchase()
+                }
             )
         }
     }
@@ -589,7 +597,7 @@ private fun InitialScanContent(
         ) {
             Icon(
                 imageVector = Icons.Filled.PhotoLibrary,
-                contentDescription = null,
+                contentDescription = "Photo library",
                 tint = AccentPrimary,
                 modifier = Modifier.size(72.dp)
             )

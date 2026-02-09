@@ -22,7 +22,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -90,6 +91,9 @@ dependencies {
 
     // WorkManager for background processing
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // Google Play Billing
+    implementation("com.android.billingclient:billing-ktx:7.1.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

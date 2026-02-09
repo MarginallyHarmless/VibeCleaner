@@ -12,6 +12,7 @@ import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.photocleanup.PhotoCleanupApp
+import com.example.photocleanup.R
 import com.example.photocleanup.data.DateRangeFilter
 import com.example.photocleanup.data.FolderInfo
 import com.example.photocleanup.data.MediaItem
@@ -398,7 +399,7 @@ class PhotoViewModel(application: Application) : AndroidViewModel(application) {
                 is MoveResult.AlreadyInAlbum -> {
                     _uiState.value = _uiState.value.copy(
                         isMovingPhoto = false,
-                        moveError = "Already in this album"
+                        moveError = getApplication<Application>().getString(R.string.error_already_in_album)
                     )
                 }
             }

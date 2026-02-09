@@ -31,4 +31,7 @@
     <string name="premium_settings_upgrade_subtitle">Unlock all features and remove limits</string>
     <string name="premium_settings_unlocked_title">Premium Unlocked</string>
     <string name="premium_settings_unlocked_subtitle">Thank you for your support!</string>
+
+    <!-- Errors -->
+    <string name="error_already_in_album">Already in this album</string>
 </resources>

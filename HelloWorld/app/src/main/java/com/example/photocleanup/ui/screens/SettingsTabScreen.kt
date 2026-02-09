@@ -35,6 +35,8 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +57,9 @@ import com.example.photocleanup.ui.components.ButtonVariant
 import com.example.photocleanup.ui.components.DialogButton
 import com.example.photocleanup.ui.components.DialogButtonIntent
 import com.example.photocleanup.ui.components.PremiumUpsellSheet
+import android.app.Activity
+import android.widget.Toast
+import com.example.photocleanup.data.BillingManager
 import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.CarbonBlack
 import com.example.photocleanup.ui.theme.HoneyBronze
@@ -69,8 +74,27 @@ fun SettingsTabScreen(
 ) {
     var showResetDialog by remember { mutableStateOf(false) }
     var showUpsellSheet by remember { mutableStateOf(false) }
-    val appPreferences = (LocalContext.current.applicationContext as PhotoCleanupApp).appPreferences
+    val context = LocalContext.current
+    val appPreferences = (context.applicationContext as PhotoCleanupApp).appPreferences
+    val billingManager = (context.applicationContext as PhotoCleanupApp).billingManager
+    val activity = context as Activity
+    val billingState by billingManager.billingState.collectAsState()
     var premiumEnabled by remember { mutableStateOf(appPreferences.isPremium) }
+
+    // Show feedback when billing state changes
+    LaunchedEffect(billingState) {
+        when (val state = billingState) {
+            is BillingManager.BillingState.Error -> {
+                Toast.makeText(context, state.message, Toast.LENGTH_LONG).show()
+                billingManager.resetState()
+            }
+            is BillingManager.BillingState.PurchaseComplete -> {
+                Toast.makeText(context, "Premium unlocked! Thank you!", Toast.LENGTH_SHORT).show()
+                billingManager.resetState()
+            }
+            else -> {}
+        }
+    }
 
     Column(
         modifier = modifier
@@ -351,8 +375,14 @@ fun SettingsTabScreen(
     if (showUpsellSheet) {
         PremiumUpsellSheet(
             onDismiss = { showUpsellSheet = false },
-            onUnlockClick = { showUpsellSheet = false },
-            onRestoreClick = { showUpsellSheet = false }
+            onUnlockClick = {
+                showUpsellSheet = false
+                billingManager.launchPurchase(activity)
+            },
+            onRestoreClick = {
+                showUpsellSheet = false
+                billingManager.restorePurchase()
+            }
         )
     }
 }

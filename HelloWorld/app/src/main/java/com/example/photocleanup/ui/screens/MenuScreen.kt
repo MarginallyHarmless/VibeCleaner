@@ -45,7 +45,10 @@ import com.example.photocleanup.ui.components.MenuCard
 import com.example.photocleanup.ui.components.MenuCardType
 import com.example.photocleanup.ui.components.PremiumOverlay
 import com.example.photocleanup.ui.components.PremiumUpsellSheet
+import com.example.photocleanup.PhotoCleanupApp
 import com.example.photocleanup.ui.theme.AccentPrimary
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
 import com.example.photocleanup.ui.theme.AccentPrimaryDim
 import com.example.photocleanup.viewmodel.MenuViewModel
 import androidx.compose.material.icons.Icons
@@ -65,6 +68,9 @@ fun MenuScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showUpsellSheet by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val billingManager = (context.applicationContext as PhotoCleanupApp).billingManager
+    val activity = context as Activity
 
     val isPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         val permissionsState = rememberMultiplePermissionsState(
@@ -283,8 +289,14 @@ fun MenuScreen(
         if (showUpsellSheet) {
             PremiumUpsellSheet(
                 onDismiss = { showUpsellSheet = false },
-                onUnlockClick = { showUpsellSheet = false },
-                onRestoreClick = { showUpsellSheet = false }
+                onUnlockClick = {
+                    showUpsellSheet = false
+                    billingManager.launchPurchase(activity)
+                },
+                onRestoreClick = {
+                    showUpsellSheet = false
+                    billingManager.restorePurchase()
+                }
             )
         }
     }

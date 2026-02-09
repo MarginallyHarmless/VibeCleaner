@@ -49,6 +49,10 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(0xFF1A1A1A.toInt())
         )
         super.onCreate(savedInstanceState)
+
+        // Connect to Google Play Billing to check for existing purchases
+        (application as PhotoCleanupApp).billingManager.startConnection()
+
         setContent {
             CleanMyPhotosTheme {
                 Surface(

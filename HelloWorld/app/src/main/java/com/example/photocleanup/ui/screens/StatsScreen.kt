@@ -1,5 +1,6 @@
 package com.example.photocleanup.ui.screens
 
+import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,8 @@ import com.example.photocleanup.ui.components.DetailStatRow
 import com.example.photocleanup.ui.components.HeroStatPod
 import com.example.photocleanup.ui.components.PremiumOverlay
 import com.example.photocleanup.ui.components.PremiumUpsellSheet
+import com.example.photocleanup.PhotoCleanupApp
+import androidx.compose.ui.platform.LocalContext
 import com.example.photocleanup.ui.components.MilestoneSection
 import com.example.photocleanup.ui.components.QualityBreakdownChart
 import com.example.photocleanup.ui.components.RatioBar
@@ -70,6 +73,9 @@ fun StatsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showUpsellSheet by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val billingManager = (context.applicationContext as PhotoCleanupApp).billingManager
+    val activity = context as Activity
 
     if (uiState.isLoading) {
         Column(
@@ -407,8 +413,14 @@ fun StatsScreen(
     if (showUpsellSheet) {
         PremiumUpsellSheet(
             onDismiss = { showUpsellSheet = false },
-            onUnlockClick = { showUpsellSheet = false },
-            onRestoreClick = { showUpsellSheet = false }
+            onUnlockClick = {
+                showUpsellSheet = false
+                billingManager.launchPurchase(activity)
+            },
+            onRestoreClick = {
+                showUpsellSheet = false
+                billingManager.restorePurchase()
+            }
         )
     }
 }

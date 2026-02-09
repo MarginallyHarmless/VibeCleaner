@@ -7,7 +7,7 @@ class AppPreferences(context: Context) {
 
     /** Master premium toggle — gates all paid features (videos, future IAP features). */
     var isPremium: Boolean
-        get() = prefs.getBoolean("premium_unlocked", true)
+        get() = prefs.getBoolean("premium_unlocked", false)
         set(value) = prefs.edit().putBoolean("premium_unlocked", value).apply()
 
     /** Videos are a premium feature. */
