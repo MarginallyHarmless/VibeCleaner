@@ -29,8 +29,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -60,7 +58,6 @@ import com.example.photocleanup.ui.components.PremiumUpsellSheet
 import android.app.Activity
 import android.widget.Toast
 import com.example.photocleanup.data.BillingManager
-import com.example.photocleanup.ui.theme.AccentPrimary
 import com.example.photocleanup.ui.theme.CarbonBlack
 import com.example.photocleanup.ui.theme.HoneyBronze
 import com.example.photocleanup.ui.theme.HoneyBronzeDim
@@ -79,7 +76,7 @@ fun SettingsTabScreen(
     val billingManager = (context.applicationContext as PhotoCleanupApp).billingManager
     val activity = context as Activity
     val billingState by billingManager.billingState.collectAsState()
-    var premiumEnabled by remember { mutableStateOf(appPreferences.isPremium) }
+    val premiumEnabled = appPreferences.isPremium
 
     // Show feedback when billing state changes
     LaunchedEffect(billingState) {
@@ -238,40 +235,6 @@ fun SettingsTabScreen(
                         color = TextSecondary
                     )
                 }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // DEV: Premium toggle (temporary — remove before release, wire to IAP)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Premium Mode",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f).padding(end = 16.dp)
-                )
-                Switch(
-                    checked = premiumEnabled,
-                    onCheckedChange = {
-                        premiumEnabled = it
-                        appPreferences.isPremium = it
-                    },
-                    colors = SwitchDefaults.colors(checkedTrackColor = AccentPrimary)
-                )
             }
         }
 
