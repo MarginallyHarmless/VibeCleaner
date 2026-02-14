@@ -1,5 +1,5 @@
 # CLAUDE.md
-# Clean My Photos Android App
+# Stash or Trash Android App
 
 ## Project Overview
 A photo gallery management app that helps users quickly organize their photos through an intuitive swipe interface. Users can swipe left to delete photos, swipe right to save them, or organize photos into folders. The app targets users who have accumulated large photo collections and need an efficient way to declutter and organize their galleries.
@@ -289,7 +289,8 @@ Before submitting to Play Store, ensure:
 - **Material Design 3**: Follow Android design guidelines
 
 ### Branding (Work in Progress)
-- App name: Clean My Photos
+- App name: Stash or Trash
+- Tagline: Swipe your gallery clean.
 - Color scheme: [TBD]
 - Logo/Icon: [TBD]
 - Typography: Use Material Design 3 defaults until custom branding decided

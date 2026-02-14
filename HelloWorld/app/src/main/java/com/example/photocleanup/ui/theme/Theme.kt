@@ -35,7 +35,7 @@ private val CleanMyPhotosDarkColorScheme = darkColorScheme(
 fun CleanMyPhotosTheme(
     content: @Composable () -> Unit
 ) {
-    // Always use dark theme - Clean My Photos brand
+    // Always use dark theme - Stash or Trash brand
     MaterialTheme(
         colorScheme = CleanMyPhotosDarkColorScheme,
         typography = Typography,

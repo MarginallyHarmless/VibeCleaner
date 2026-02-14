@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,8 +27,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.photocleanup.R
 import com.example.photocleanup.ui.components.AppButton
 import com.example.photocleanup.ui.components.ButtonVariant
 import com.example.photocleanup.ui.theme.AccentPrimary
@@ -70,7 +74,11 @@ fun PermissionScreen(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(text = "\uD83D\uDCF7", fontSize = 72.sp)
+                Image(
+                    painter = painterResource(id = R.drawable.logo),
+                    contentDescription = "Stash or Trash logo",
+                    modifier = Modifier.size(120.dp)
+                )
                 Spacer(modifier = Modifier.height(32.dp))
                 Text(
                     text = "Let's Clean Up!",
@@ -82,7 +90,7 @@ fun PermissionScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = if (shouldShowRationale) {
-                        "Clean My Photos needs access to your photos and videos to help you review and organize them. Please grant permission to continue."
+                        "Stash or Trash needs access to your photos and videos to help you review and organize them. Please grant permission to continue."
                     } else {
                         "To tidy up your photo and video chaos, we'll need a backstage pass to your library. Don't worry, your camera roll secrets are safe with us!"
                     },
@@ -119,7 +127,11 @@ fun PermissionScreen(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(text = "\uD83D\uDCF7", fontSize = 72.sp)
+                Image(
+                    painter = painterResource(id = R.drawable.logo),
+                    contentDescription = "Stash or Trash logo",
+                    modifier = Modifier.size(120.dp)
+                )
                 Spacer(modifier = Modifier.height(32.dp))
                 Text(
                     text = "Let's Clean Up!",
@@ -131,7 +143,7 @@ fun PermissionScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = if (permissionState.status.shouldShowRationale) {
-                        "Clean My Photos needs access to your photos and videos to help you review and organize them. Please grant permission to continue."
+                        "Stash or Trash needs access to your photos and videos to help you review and organize them. Please grant permission to continue."
                     } else {
                         "To tidy up your photo and video chaos, we'll need a backstage pass to your library. Don't worry, your camera roll secrets are safe with us!"
                     },

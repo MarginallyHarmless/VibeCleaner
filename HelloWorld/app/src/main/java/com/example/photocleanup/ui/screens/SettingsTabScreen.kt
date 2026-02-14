@@ -301,7 +301,7 @@ fun SettingsTabScreen(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "Clean My Photos v1.0",
+                text = "Stash or Trash v1.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )

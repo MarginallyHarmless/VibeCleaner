@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Clean My Photos</string>
+    <string name="app_name">Stash or Trash</string>
 
     <!-- Menu Screen -->
     <string name="menu_title">Cleanup:</string>

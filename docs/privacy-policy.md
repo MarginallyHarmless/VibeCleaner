@@ -1,10 +1,10 @@
-# Privacy Policy — Clean My Photos
+# Privacy Policy — Stash or Trash
 
-**Last updated:** February 9, 2026
+**Last updated:** February 14, 2026
 
 ## Overview
 
-Clean My Photos ("the App") is a photo gallery management app that helps you organize and declutter your photo collection. The App operates entirely on your device. We do not collect, store, transmit, or share any of your personal data.
+Stash or Trash ("the App") is a photo gallery management app that helps you organize and declutter your photo collection. The App operates entirely on your device. We do not collect, store, transmit, or share any of your personal data.
 
 ## Data Collection
 

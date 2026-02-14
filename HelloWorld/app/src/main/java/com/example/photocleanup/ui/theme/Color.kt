@@ -3,7 +3,7 @@ package com.example.photocleanup.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // ============================================
-// Clean My Photos - Dark Theme Color Palette
+// Stash or Trash - Dark Theme Color Palette
 // ============================================
 
 // Background & Surface (Carbon Black base)
