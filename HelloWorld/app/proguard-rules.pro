@@ -1,7 +1,7 @@
 # Add project specific ProGuard rules here.
 
 # Room database entities — prevent obfuscation of table/column names
--keep class com.example.photocleanup.data.** { *; }
+-keep class com.stashortrash.app.data.** { *; }
 
 # ViewModels
 -keep class * extends androidx.lifecycle.ViewModel { *; }
