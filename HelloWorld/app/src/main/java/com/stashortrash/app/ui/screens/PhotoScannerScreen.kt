@@ -496,6 +496,12 @@ private fun DuplicatesContent(
                 modifier = modifier
             )
         }
+        scanState is ScanState.Cancelled && groupCount == 0 -> {
+            InitialScanContent(
+                onStartScan = onStartScan,
+                modifier = modifier
+            )
+        }
         scanState is ScanState.Completed && groupCount == 0 -> {
             NoResultsContent(
                 title = "No Duplicates Found",
@@ -538,6 +544,12 @@ private fun LowQualityContent(
 ) {
     when {
         scanState is ScanState.Idle && lowQualityCount == 0 -> {
+            InitialScanContent(
+                onStartScan = onStartScan,
+                modifier = modifier
+            )
+        }
+        scanState is ScanState.Cancelled && lowQualityCount == 0 -> {
             InitialScanContent(
                 onStartScan = onStartScan,
                 modifier = modifier
@@ -761,7 +773,7 @@ private fun DuplicateGroupsList(
         }
 
         item {
-            Spacer(modifier = Modifier.height(80.dp))
+            Spacer(modifier = Modifier.height(120.dp))
         }
     }
 }
@@ -777,7 +789,7 @@ private fun LowQualityPhotoGrid(
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
-        contentPadding = PaddingValues(bottom = 100.dp),
+        contentPadding = PaddingValues(bottom = 120.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier.fillMaxSize()

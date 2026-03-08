@@ -169,8 +169,8 @@ fun StatsScreen(
                     StatGridCard(
                         icon = Icons.Rounded.OfflineBolt,
                         value = if (viewModel.isPremium) {
-                            if (uiState.busiestDayCount > 0) formatNumber(uiState.busiestDayCount) else "-"
-                        } else "128",
+                            if (uiState.busiestDayCount > 0) "${formatNumber(uiState.busiestDayCount)} photos" else "-"
+                        } else "128 photos",
                         label = if (viewModel.isPremium && uiState.busiestDay.isNotEmpty()) "Best Day" else "Busiest Day",
                         modifier = Modifier.weight(1f)
                     )

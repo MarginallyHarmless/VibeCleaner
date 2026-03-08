@@ -342,7 +342,16 @@ fun ReviewedRatioBar(
 
     val ratio = (reviewed.toFloat() / total).coerceIn(0f, 1f)
     val reviewedPct = (ratio * 100).toInt()
-    val unreviewedPct = 100 - reviewedPct
+    val unreviewedPct = ((1f - ratio) * 100).toInt()
+    // Show "<1%" when there are reviewed/unreviewed photos but percentage rounds to 0
+    val reviewedLabel = when {
+        reviewedPct == 0 && reviewed > 0 -> "<1%"
+        else -> "$reviewedPct%"
+    }
+    val unreviewedLabel = when {
+        unreviewedPct == 0 && reviewed < total -> "<1%"
+        else -> "$unreviewedPct%"
+    }
 
     Column(
         modifier = modifier
@@ -366,7 +375,7 @@ fun ReviewedRatioBar(
                 .height(12.dp)
                 .clip(RoundedCornerShape(6.dp))
         ) {
-            if (reviewedPct > 0) {
+            if (reviewed > 0) {
                 Box(
                     modifier = Modifier
                         .weight(ratio.coerceAtLeast(0.01f))
@@ -374,7 +383,7 @@ fun ReviewedRatioBar(
                         .background(Seagrass)
                 )
             }
-            if (unreviewedPct > 0) {
+            if (reviewed < total) {
                 Box(
                     modifier = Modifier
                         .weight((1f - ratio).coerceAtLeast(0.01f))
@@ -399,7 +408,7 @@ fun ReviewedRatioBar(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "$reviewedPct% reviewed",
+                    text = "$reviewedLabel reviewed",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -413,7 +422,7 @@ fun ReviewedRatioBar(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "$unreviewedPct% unreviewed",
+                    text = "$unreviewedLabel unreviewed",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
