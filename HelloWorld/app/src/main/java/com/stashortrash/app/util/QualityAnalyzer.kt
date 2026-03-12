@@ -30,7 +30,7 @@ import kotlin.math.sqrt
  */
 object QualityAnalyzer {
 
-    private const val DEBUG = true
+    private const val DEBUG = false
 
     // Issue types
     enum class QualityIssue {

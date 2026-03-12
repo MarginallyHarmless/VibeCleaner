@@ -107,7 +107,7 @@ import kotlin.math.sqrt
 object ImageHasher {
 
     private const val TAG = "ImageHasher"
-    private const val DEBUG = true  // Set to false to disable debug logging in production
+    private const val DEBUG = false  // Set to false to disable debug logging in production
 
     // dHash constants: Image resized to 9x8 to compute 8 horizontal differences per row (64 bits)
     private const val HASH_WIDTH = 9

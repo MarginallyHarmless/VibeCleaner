@@ -10,11 +10,11 @@ Stash or Trash ("the App") is a photo gallery management app that helps you orga
 
 **We do not collect any data.** The App does not:
 
-- Send your photos, videos, or any files to external servers
-- Collect usage analytics or crash reports
-- Track your location or device activity
-- Use cookies or similar tracking technologies
-- Share any information with third parties
+* Send your photos, videos, or any files to external servers
+* Collect usage analytics or crash reports
+* Track your location or device activity
+* Use cookies or similar tracking technologies
+* Share any information with third parties
 
 All photo processing, duplicate detection, and quality analysis happen locally on your device.
 
@@ -22,12 +22,12 @@ All photo processing, duplicate detection, and quality analysis happen locally o
 
 The App requests the following permissions to function:
 
-| Permission | Why it's needed |
-|---|---|
-| **Photo & Video Access** (READ_MEDIA_IMAGES, READ_MEDIA_VIDEO) | To display your photos and videos for review and organization |
-| **Storage Access** (READ/WRITE_EXTERNAL_STORAGE on older Android versions) | To read and manage photos on devices running Android 12 or earlier |
-| **All Files Access** (MANAGE_EXTERNAL_STORAGE) | To move photos between albums without requiring confirmation for each file. This is optional — the App works without it but may show additional confirmation dialogs |
-| **Notifications** (POST_NOTIFICATIONS) | To show progress when scanning for duplicate or low-quality photos in the background |
+|Permission|Why it's needed|
+|-|-|
+|**Photo \& Video Access** (READ\_MEDIA\_IMAGES, READ\_MEDIA\_VIDEO)|To display your photos and videos for review and organization|
+|**Storage Access** (READ/WRITE\_EXTERNAL\_STORAGE on older Android versions)|To read and manage photos on devices running Android 12 or earlier|
+|**All Files Access** (MANAGE\_EXTERNAL\_STORAGE)|To move photos between albums without requiring confirmation for each file. This is optional — the App works without it but may show additional confirmation dialogs|
+|**Notifications** (POST\_NOTIFICATIONS)|To show progress when scanning for duplicate or low-quality photos in the background|
 
 You can revoke any permission at any time through your device's Settings. Some features may not work without the required permissions.
 
@@ -35,8 +35,8 @@ You can revoke any permission at any time through your device's Settings. Some f
 
 The App stores the following data locally on your device:
 
-- **App preferences** (e.g., premium status, settings) in Android SharedPreferences
-- **Photo scan results** (duplicate detection hashes, quality scores) in a local database
+* **App preferences** (e.g., premium status, settings) in Android SharedPreferences
+* **Photo scan results** (duplicate detection hashes, quality scores) in a local database
 
 This data never leaves your device and is deleted when you uninstall the App.
 
@@ -56,4 +56,5 @@ If we update this privacy policy, we will post the revised version here with an 
 
 If you have questions about this privacy policy, please contact us at:
 
-**Email:** [YOUR_EMAIL_HERE]
+**Email:** temporary.pull@gmail.com
+
