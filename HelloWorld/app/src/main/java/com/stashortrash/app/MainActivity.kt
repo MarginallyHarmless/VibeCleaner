@@ -11,7 +11,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -104,7 +109,9 @@ class MainActivity : ComponentActivity() {
                         NavHost(
                             navController = navController,
                             startDestination = BottomNavItem.Cleanup.route,
-                            modifier = if (showBottomNav) Modifier.padding(innerPadding) else Modifier,
+                            modifier = if (showBottomNav) Modifier.padding(innerPadding) else Modifier.padding(
+                                top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() - 4.dp
+                            ),
                             enterTransition = {
                                 slideIntoContainer(
                                     towards = AnimatedContentTransitionScope.SlideDirection.Start,
@@ -154,6 +161,9 @@ class MainActivity : ComponentActivity() {
                                         navController.navigate(
                                             "main?mode=$modeParam&year=$yearParam&month=$monthParam&albumId=$albumIdParam&allMedia=$allMediaParam&random=$randomParam&randomStartUri=$randomStartUriParam&title=$titleParam"
                                         )
+                                    },
+                                    onNavigateToDelete = {
+                                        navController.navigate("to_delete")
                                     }
                                 )
                             }

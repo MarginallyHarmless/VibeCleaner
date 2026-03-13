@@ -59,12 +59,11 @@ import android.net.Uri
 import com.stashortrash.app.data.MenuFilter
 import com.stashortrash.app.ui.components.AlbumSelector
 import com.stashortrash.app.ui.components.AppButton
+import com.stashortrash.app.ui.components.ButtonIntent
 import com.stashortrash.app.ui.components.ButtonVariant
 import com.stashortrash.app.ui.components.PremiumOverlay
 import com.stashortrash.app.ui.components.PremiumUpsellSheet
 import com.stashortrash.app.PhotoCleanupApp
-import com.stashortrash.app.ui.components.DialogButton
-import com.stashortrash.app.ui.components.DialogButtonIntent
 import com.stashortrash.app.ui.components.ProgressIndicator
 import com.stashortrash.app.ui.components.SwipeablePhotoCard
 import com.stashortrash.app.ui.theme.AccentPrimary
@@ -188,7 +187,7 @@ fun MainScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                                .padding(horizontal = 8.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // Back button if navigating from menu
@@ -220,8 +219,9 @@ fun MainScreen(
                                 if (uiState.showCelebration) {
                                     AllDoneContent(
                                         totalReviewed = uiState.reviewedCount,
-                                        onReviewAgain = { viewModel.resetAllReviews() },
                                         onBack = { viewModel.dismissCelebration() },
+                                        toDeleteCount = uiState.toDeleteCount,
+                                        onNavigateToDelete = onNavigateToDelete,
                                         modifier = Modifier.weight(1f)
                                     )
                                 } else {
@@ -294,20 +294,6 @@ fun MainScreen(
                                             )
                                         }
                                     }
-                                }
-
-                                // Full storage access prompt (Android 11+)
-                                // Only show if not already granted and user hasn't dismissed
-                                var promptDismissed by rememberSaveable { mutableStateOf(false) }
-                                val needsStorageAccess = viewModel.isPremium &&
-                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                                    !hasFullStorageAccess()
-
-                                if (needsStorageAccess && !promptDismissed) {
-                                    FullStorageAccessPrompt(
-                                        onDismiss = { promptDismissed = true },
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                    )
                                 }
 
                                 // Album selector at bottom
@@ -444,8 +430,9 @@ private fun ToDeleteBadge(
 @Composable
 private fun AllDoneContent(
     totalReviewed: Int,
-    onReviewAgain: () -> Unit,
     onBack: () -> Unit,
+    toDeleteCount: Int = 0,
+    onNavigateToDelete: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -501,11 +488,18 @@ private fun AllDoneContent(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            DialogButton(
-                text = "Review Again",
-                onClick = onReviewAgain,
-                intent = DialogButtonIntent.Positive
-            )
+            if (toDeleteCount > 0) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                AppButton(
+                    text = "$toDeleteCount photo${if (toDeleteCount != 1) "s" else ""} to delete",
+                    onClick = onNavigateToDelete,
+                    variant = ButtonVariant.Secondary,
+                    intent = ButtonIntent.Destructive,
+                    leadingIcon = Icons.Default.Delete,
+                    fillWidth = true
+                )
+            }
         }
     }
 }

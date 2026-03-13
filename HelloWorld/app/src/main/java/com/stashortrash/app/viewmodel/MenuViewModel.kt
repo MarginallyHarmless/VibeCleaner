@@ -24,7 +24,8 @@ data class MenuUiState(
     val allMediaStats: AllMediaStats? = null,
     val hasAnyUnreviewedPhotos: Boolean = true,
     val mostRecentMediaUri: Uri? = null,
-    val randomMediaUri: Uri? = null
+    val randomMediaUri: Uri? = null,
+    val toDeleteCount: Int = 0
 )
 
 class MenuViewModel(application: Application) : AndroidViewModel(application) {
@@ -39,6 +40,11 @@ class MenuViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         loadMenuData()
+        viewModelScope.launch {
+            repository.getToDeleteCount().collect { count ->
+                _uiState.value = _uiState.value.copy(toDeleteCount = count)
+            }
+        }
     }
 
     fun loadMenuData() {

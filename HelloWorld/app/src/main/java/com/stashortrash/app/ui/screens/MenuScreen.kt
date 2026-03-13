@@ -40,6 +40,9 @@ import androidx.compose.ui.unit.sp
 import com.stashortrash.app.R
 import com.stashortrash.app.data.MenuFilter
 import com.stashortrash.app.data.MenuMode
+import com.stashortrash.app.ui.components.AppButton
+import com.stashortrash.app.ui.components.ButtonIntent
+import com.stashortrash.app.ui.components.ButtonVariant
 import com.stashortrash.app.ui.components.HeroCard
 import com.stashortrash.app.ui.components.MenuCard
 import com.stashortrash.app.ui.components.MenuCardType
@@ -52,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.stashortrash.app.ui.theme.AccentPrimaryDim
 import com.stashortrash.app.viewmodel.MenuViewModel
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Shuffle
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -64,6 +68,7 @@ import com.google.accompanist.permissions.rememberPermissionState
 fun MenuScreen(
     viewModel: MenuViewModel,
     onNavigateToSwipe: (MenuFilter) -> Unit,
+    onNavigateToDelete: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -170,6 +175,20 @@ fun MenuScreen(
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
+                            // "To delete" button — shown above cards when photos are queued
+                            if (uiState.toDeleteCount > 0) {
+                                item(key = "to_delete_button") {
+                                    AppButton(
+                                        text = "${uiState.toDeleteCount} photo${if (uiState.toDeleteCount != 1) "s" else ""} to delete",
+                                        onClick = onNavigateToDelete,
+                                        variant = ButtonVariant.Secondary,
+                                        intent = ButtonIntent.Destructive,
+                                        leadingIcon = Icons.Default.Delete,
+                                        fillWidth = true
+                                    )
+                                }
+                            }
+
                             when (uiState.menuMode) {
                                 MenuMode.BY_DATE -> {
                                     // Hero cards row (All Media + Random)

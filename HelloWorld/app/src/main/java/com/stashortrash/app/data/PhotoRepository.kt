@@ -25,19 +25,6 @@ class PhotoRepository(
         private const val TAG = "PhotoRepository"
     }
 
-    /**
-     * Check if app has full storage access (MANAGE_EXTERNAL_STORAGE permission on Android 11+).
-     * When granted, photo moves don't require per-file permission dialogs.
-     */
-    fun hasFullStorageAccess(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
-        } else {
-            // On Android 10 and below, we don't need this permission
-            true
-        }
-    }
-
     // ==================== Multi-volume helpers ====================
 
     /**
@@ -274,26 +261,12 @@ class PhotoRepository(
                 ?: return@withContext MoveResult.Error("Could not find target album path")
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // Android 11+: Check if we have full storage access
-                if (Environment.isExternalStorageManager()) {
-                    // We have full access - move directly without permission dialog
-                    val values = ContentValues().apply {
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, targetRelativePath)
-                    }
-                    val rowsUpdated = context.contentResolver.update(photoUri, values, null, null)
-                    return@withContext if (rowsUpdated > 0) {
-                        MoveResult.Success(photoUri)
-                    } else {
-                        MoveResult.Error("Failed to move photo")
-                    }
-                } else {
-                    // Fall back to permission request
-                    val writeRequest = MediaStore.createWriteRequest(
-                        context.contentResolver,
-                        listOf(photoUri)
-                    )
-                    return@withContext MoveResult.RequiresPermission(writeRequest.intentSender, targetAlbumName)
-                }
+                // Android 11+: Request write permission via system dialog
+                val writeRequest = MediaStore.createWriteRequest(
+                    context.contentResolver,
+                    listOf(photoUri)
+                )
+                return@withContext MoveResult.RequiresPermission(writeRequest.intentSender, targetAlbumName)
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 // Android 10: Update RELATIVE_PATH directly
                 val values = ContentValues().apply {
